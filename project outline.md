@@ -8,14 +8,16 @@
 
 ### Scope of Work
 - Implementing Sensors
-    - BMP 280: retrieve pressure metric.
-    - MQ-9: retrieve carbon monoxide metric.
-    - MS-1100: retrieve carbon dioxide metric.
-    - SEN54: retrieve PM, VOC, humidity and temperature metrics.
+    - BMP 280: retrieve pressure metric. 
+    - MQ-9: retrieve carbon monoxide metric. COMPLETED
+    - SEN54: retrieve PM, VOC, humidity and temperature metrics. COMPLETED
 - Implementing RTOS
-    - Set up threads for each sensors with this priorty: sen54, bmp280, ms-1100 and mq-9.
+    - Set up threads for each sensors with this priority: sen54, bmp280, ms-1100 and mq-9.
 - Implementing Data Analysis
     - Display green, yellow or red zone based on value.
     - Research the "green, yellow, red" for each measured chemical.
 - Implementing Wifi/Bluetooth connection
     - Create a connection from board to phone using serial bluetooth terminal.
+- Implement TinyML to detect anomalies
+    - create a large dataset
+    

@@ -1,7 +1,7 @@
 #include <MQUnifiedsensor.h>
 /************************Hardware Related Macros************************************/
 #define         Board                   ("Arduino UNO")
-#define         Pin                     (4)  //Analog input 4 of your arduino
+#define         Pin                     (6)  //Analog input 4 of your arduino
 /***********************Software Related Macros************************************/
 #define         Type                    ("MQ-9") //MQ9
 #define         Voltage_Resolution      (5)
@@ -12,8 +12,14 @@
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(115200);
+  SetupMQ9();
+}
+void loop() {
+  LoopMQ9();
+}
+
+void SetupMQ9(){
   MQ9.setRegressionMethod(1); //sets math model to calculate PPM concentration
 
   MQ9.init(); 
@@ -39,19 +45,13 @@ void setup() {
   Serial.println("  CH4  ");  
 }
 
-void loop() {
+
+void LoopMQ9(){
   MQ9.update();
-    /*
-  Exponential regression:
-  GAS     | a      | b
-  LPG     | 1000.5 | -2.186    5v supply.
-  CH4     | 4269.6 | -2.648    5v supply.
-  CO      | 599.65 | -2.244    for co I must switch between 5v and 1.5v being supplied to the sensor.
-  */
-  MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values
+
+  MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
   float CH4 = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
   
   Serial.print("\n"); Serial.print(CH4);
-
   delay(500); //Sampling frequency
 }
