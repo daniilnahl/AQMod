@@ -9,10 +9,10 @@
 
 ### Scope of Work
 1. **Hardware & Electrical**
-- Breadboard prototyping with each sensor connected.
-- Verify each sensor (BMP280, MQ-9, SEN54, MS-1100) with simple scripts.
+- ~Breadboard prototyping with each sensor connected.~
+- ~Verify each sensor (BMP280, MQ-9, SEN54, MS-1100) with simple scripts.~
 - Calibrate sensors.
-- Setup power module to supply voltage to esp32.
+- ~Setup power module to supply voltage to esp32.~
 
 2. **RTOS Integration**
 - setup FreeRTOS task toggling an LED to confirm scheduler and toolchain.
