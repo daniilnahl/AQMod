@@ -14,6 +14,7 @@
   Written by Limor Fried & Kevin Townsend for Adafruit Industries.
   BSD license, all text above must be included in any redistribution
  ***************************************************************************/
+<<<<<<< HEAD
 /*
  * I2C-Generator: 0.3.0
  * Yaml Version: 2.1.3
@@ -58,6 +59,17 @@
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
 #define         Pin                     (6)  
+=======
+
+#include <Wire.h>
+#include <Adafruit_BMP280.h>
+#include <MQUnifiedsensor.h>
+
+
+//MQ-9 parameters
+#define         Board                   ("Arduino UNO")
+#define         Pin                     (6)  //Analog input 4 of your arduino
+>>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 /***********************Software Related Macros************************************/
 #define         Type                    ("MQ-9") //MQ9
 #define         Voltage_Resolution      (5)
@@ -68,6 +80,7 @@
 Adafruit_BMP280 bmp; //I2C
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
+<<<<<<< HEAD
 // The used commands use up to 48 bytes. On some Arduino's the default buffer
 // space is not large enough
 #define MAXBUF_REQUIREMENT 48
@@ -80,22 +93,31 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 SensirionI2CSen5x sen5x;
 
+=======
+>>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 void setup() {
   Serial.begin(115200);
   SetupBMP280();
   SetupMQ9();
 
+<<<<<<< HEAD
   Wire.begin();
   SetupSen54();
+=======
+>>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 }
 
 void loop() {
   LoopBMP280();
   delay(2000);
   LoopMQ9(); //add names in print for each sensor
+<<<<<<< HEAD
   delay(2000);
   LoopSen54();
   delay(2000);
+=======
+
+>>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 }
 
 void LoopBMP280(){
@@ -172,6 +194,7 @@ void LoopMQ9(){
   Serial.print("\n"); Serial.print(CH4);
   delay(500); //Sampling frequency
 }
+<<<<<<< HEAD
 
 void SetupSen54(){
     sen5x.begin(Wire);
@@ -266,3 +289,5 @@ void LoopSen54(){ //right now only prints values into serial monitor.
         Serial.print("\t\n");
     }
 }
+=======
+>>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
