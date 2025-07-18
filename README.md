@@ -38,6 +38,12 @@
 - SEN 54 is responsible for tracking particulate matters, humidity, temperature and voc index.
 
 ---
+## Project Milestones
+
+1. ~~First working prototype~~ COMPLETED on 07/17/2025
+2. RTOS Integration
+3. Bluetooth Connectivity
+4. TinyML Anomaly Detection
 
 ## Prerequisites
 
