@@ -1,75 +1,12 @@
-/***************************************************************************
-  This is a library for the BMP280 humidity, temperature & pressure sensor
-
-  Designed specifically to work with the Adafruit BMP280 Breakout
-  ----> http://www.adafruit.com/products/2651
-
-  These sensors use I2C or SPI to communicate, 2 or 4 pins are required
-  to interface.
-
-  Adafruit invests time and resources providing this open source code,
-  please support Adafruit andopen-source hardware by purchasing products
-  from Adafruit!
-
-  Written by Limor Fried & Kevin Townsend for Adafruit Industries.
-  BSD license, all text above must be included in any redistribution
- ***************************************************************************/
-<<<<<<< HEAD
-/*
- * I2C-Generator: 0.3.0
- * Yaml Version: 2.1.3
- * Template Version: 0.7.0-112-g190ecaa
- */
-/*
- * Copyright (c) 2021, Sensirion AG
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- *
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * * Neither the name of Sensirion AG nor the names of its
- *   contributors may be used to endorse or promote products derived from
- *   this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */ 
+#include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_BMP280.h>
-#include <MQUnifiedsensor.h>
 #include <SensirionI2CSen5x.h>
-#include <Wire.h>
-
-//MQ-9 parameters
-#define         Board                   ("Arduino UNO")
-#define         Pin                     (6)  
-=======
-
-#include <Wire.h>
 #include <Adafruit_BMP280.h>
 #include <MQUnifiedsensor.h>
-
 
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
 #define         Pin                     (6)  //Analog input 4 of your arduino
->>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 /***********************Software Related Macros************************************/
 #define         Type                    ("MQ-9") //MQ9
 #define         Voltage_Resolution      (5)
@@ -80,7 +17,6 @@
 Adafruit_BMP280 bmp; //I2C
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
-<<<<<<< HEAD
 // The used commands use up to 48 bytes. On some Arduino's the default buffer
 // space is not large enough
 #define MAXBUF_REQUIREMENT 48
@@ -93,34 +29,25 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 SensirionI2CSen5x sen5x;
 
-=======
->>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 void setup() {
   Serial.begin(115200);
   SetupBMP280();
   SetupMQ9();
-
-<<<<<<< HEAD
   Wire.begin();
   SetupSen54();
-=======
->>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 }
 
 void loop() {
   LoopBMP280();
   delay(2000);
   LoopMQ9(); //add names in print for each sensor
-<<<<<<< HEAD
   delay(2000);
   LoopSen54();
   delay(2000);
-=======
-
->>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
 }
 
 void LoopBMP280(){
+    Serial.print("\nBMP 280\n==========================================\n");
     Serial.print(F("Temperature = "));
     Serial.print(bmp.readTemperature());
     Serial.println(" *C");
@@ -186,15 +113,15 @@ void SetupMQ9(){
 }
 
 void LoopMQ9(){
+  Serial.print("\nMQ-9\n==========================================");
   MQ9.update();
 
   MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
   float CH4 = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
   
-  Serial.print("\n"); Serial.print(CH4);
+  Serial.print("\nMethane: "); Serial.print(CH4); Serial.print("\n");
   delay(500); //Sampling frequency
 }
-<<<<<<< HEAD
 
 void SetupSen54(){
     sen5x.begin(Wire);
@@ -230,6 +157,7 @@ void SetupSen54(){
 }
 
 void LoopSen54(){ //right now only prints values into serial monitor.
+    Serial.print("\nSEN 54\n==========================================\n");
     uint16_t error;
     char errorMessage[256];
 
@@ -254,33 +182,33 @@ void LoopSen54(){ //right now only prints values into serial monitor.
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     } else {
-        Serial.print("MassConcentrationPm1p0:");
+        Serial.print("MassConcentrationPm1p0: ");
         Serial.print(massConcentrationPm1p0);
         Serial.print("\t");
-        Serial.print("MassConcentrationPm2p5:");
+        Serial.print("\nMassConcentrationPm2p5: ");
         Serial.print(massConcentrationPm2p5);
         Serial.print("\t");
-        Serial.print("MassConcentrationPm4p0:");
+        Serial.print("\nMassConcentrationPm4p0: ");
         Serial.print(massConcentrationPm4p0);
         Serial.print("\t");
-        Serial.print("MassConcentrationPm10p0:");
+        Serial.print("\nMassConcentrationPm10p0: ");
         Serial.print(massConcentrationPm10p0);
         Serial.print("\t");
-        Serial.print("AmbientHumidity:");
+        Serial.print("\nAmbientHumidity: ");
         if (isnan(ambientHumidity)) {
             Serial.print("n/a");
         } else {
             Serial.print(ambientHumidity);
         }
         Serial.print("\t");
-        Serial.print("AmbientTemperature:");
+        Serial.print("\nAmbientTemperature: ");
         if (isnan(ambientTemperature)) {
             Serial.print("n/a");
         } else {
             Serial.print(ambientTemperature);
         }
         Serial.print("\t");
-        Serial.print("VocIndex:");
+        Serial.print("\nVocIndex: ");
         if (isnan(vocIndex)) {
             Serial.print("n/a");
         } else {
@@ -289,5 +217,4 @@ void LoopSen54(){ //right now only prints values into serial monitor.
         Serial.print("\t\n");
     }
 }
-=======
->>>>>>> b002d2a2c0b6a2580dfb084741be7f30652c5636
+
