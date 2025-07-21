@@ -11,13 +11,14 @@
 1. **Hardware & Electrical**
 - ~Breadboard prototyping with each sensor connected.~
 - ~Verify each sensor (BMP280, MQ-9, SEN54, MS-1100) with simple scripts.~
-- Calibrate sensors.
+- ~Calibrate sensors.~
 - ~Setup power module to supply voltage to esp32.~
 
 2. **RTOS Integration**
 - setup FreeRTOS task toggling an LED to confirm scheduler and toolchain.
 - Add one sensor per task, use vTaskDelay() for timing; queue all readings to a single processor task.
-- Setup Single FreeRTOS queue for sensor→analysis; enable watchdog to auto-reset on deadlock.
+- Setup Single FreeRTOS queue(fifo inter task comm.) for sensor→analysis; 
+- Enable watchdog to auto-reset on deadlock.
 
 3. **Data Analysis & Scoring**
 - Determine Green/Yellow/Red thresholds
