@@ -28,7 +28,7 @@ SensirionI2CSen5x sen5x;
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 //setup functions
-void setupBMP280(){
+void initBmp280(){
   unsigned status;
   //status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
   status = bmp.begin(0x76);
@@ -50,7 +50,7 @@ void setupBMP280(){
                   Adafruit_BMP280::FILTER_X16,      /* Filtering. */
                   Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
 }
-void setupMQ9(){
+void initMq9(){
   MQ9.setRegressionMethod(1); //sets math model to calculate PPM concentration
 
   MQ9.init(); 
@@ -75,7 +75,7 @@ void setupMQ9(){
   Serial.println("** Values from MQ-9 ****");
   Serial.println("  CH4  ");  
 }
-void setupSen54(){
+void initSen54(){
     sen5x.begin(Wire);
 
     uint16_t error;
@@ -110,6 +110,9 @@ void setupSen54(){
 
 //task functions - right now only prints values into serial monitor.
 void vMainGetDataSen54(void* parameters){
+  initSen54();
+  vTaskDelay(1500 / portTICK_PERIOD_MS);
+
   for(;;){
         Serial.print("\nSEN 54\n==========================================\n");
     uint16_t error;
@@ -172,10 +175,16 @@ void vMainGetDataSen54(void* parameters){
     }
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+    //measures how many bytes the task is using
+    UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
+    Serial.printf("High-water mark: %u bytes\n", highWater * sizeof(StackType_t));
   }
 
 }
 void vMainGetDataMq9(void* parameters){
+  initMq9();
+  vTaskDelay(1500 / portTICK_PERIOD_MS);
+
   for(;;){
   Serial.print("\nMQ-9\n==========================================");
   MQ9.update();
@@ -185,10 +194,15 @@ void vMainGetDataMq9(void* parameters){
   
   Serial.print("\nMethane: "); Serial.print(CH4); Serial.print("\n");
   vTaskDelay(500 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+  //measures how many bytes the task is using
+  UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
+  Serial.printf("\nHigh-water mark: %u bytes\n", highWater * sizeof(StackType_t));
   }
 }
-
 void vMainGetDataBmp280(void* parameters){
+  initBmp280();
+  vTaskDelay(1500 / portTICK_PERIOD_MS);
+
   for (;;){
   Serial.print("\nBMP 280\n==========================================\n");
   Serial.print(F("Temperature = "));
@@ -205,42 +219,34 @@ void vMainGetDataBmp280(void* parameters){
 
   Serial.println();
   vTaskDelay(500 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+  //measures how many bytes the task is using
+  UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
+  Serial.printf("High-water mark: %u bytes\n", highWater * sizeof(StackType_t));
   }
 }
 
-
-
 void setup() { 
-  //sensor setup
   Serial.begin(115200);
   Wire.begin();
 
-  setupBMP280();
-  vTaskDelay(500 / portTICK_PERIOD_MS);
-  setupMQ9();
-  vTaskDelay(500 / portTICK_PERIOD_MS);  
-  setupSen54();
-
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-  //task setup
+  //tasks
   xTaskCreate(vMainGetDataSen54,  //function name
   "Get Data from Sen54",          //task name
-  2048,                           //stack size
+  4096,                           //stack size
   NULL,                           //task paramaters
   3,                              //priority
   NULL);                          //task handle
 
   xTaskCreate(vMainGetDataBmp280, //function name
   "Get Data from BMP 280",        //task name
-  1024,                           //stack size
+  2048,                           //stack size
   NULL,                           //task paramaters
   2,                              //priority
   NULL);                          //task handle
 
   xTaskCreate(vMainGetDataMq9,  //function name
   "Get Data from MQ-9",         //task name
-  1024,                         //stack size
+  2048,                         //stack size
   NULL,                         //task paramaters
   1,                            //priority
   NULL);                        //task handle
