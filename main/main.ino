@@ -114,13 +114,11 @@ void vMainGetDataSen54(void* parameters){
   vTaskDelay(1500 / portTICK_PERIOD_MS);
 
   for(;;){
-        Serial.print("\nSEN 54\n==========================================\n");
     uint16_t error;
-    char errorMessage[256];
+    size_t buffer_size = 257;
+    char* buffer = new char[256];
 
-    vTaskDelay(1000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
-
-    // Read Measurement
+    //data vars
     float massConcentrationPm1p0;
     float massConcentrationPm2p5;
     float massConcentrationPm4p0;
@@ -130,54 +128,40 @@ void vMainGetDataSen54(void* parameters){
     float vocIndex;
     float noxIndex;
 
+    //gets values and auto fills error msg if any errors come up
     error = sen5x.readMeasuredValues(
         massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0,
         massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex, noxIndex);
 
     if (error) {
-        Serial.print("Error trying to execute readMeasuredValues(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
+        errorToString(error, buffer, 256);
+        snprintf(buffer, buffer_size, "SEN 54\nError trying to execute readMeasuredValues(): %s", buffer);
+        String formatted_str = buffer; //converts char array to string
+        Serial.print(buffer);
+        delete[] buffer; //clean buffer
     } else {
-        Serial.print("MassConcentrationPm1p0: ");
-        Serial.print(massConcentrationPm1p0);
-        Serial.print("\t");
-        Serial.print("\nMassConcentrationPm2p5: ");
-        Serial.print(massConcentrationPm2p5);
-        Serial.print("\t");
-        Serial.print("\nMassConcentrationPm4p0: ");
-        Serial.print(massConcentrationPm4p0);
-        Serial.print("\t");
-        Serial.print("\nMassConcentrationPm10p0: ");
-        Serial.print(massConcentrationPm10p0);
-        Serial.print("\t");
-        Serial.print("\nAmbientHumidity: ");
-        if (isnan(ambientHumidity)) {
-            Serial.print("n/a");
-        } else {
-            Serial.print(ambientHumidity);
+        if (isnan(ambientHumidity)) { //if humidity is n/a
+            ambientHumidity = -1.0;
+        } 
+        if (isnan(ambientTemperature)) { //if temp is n/a
+            ambientTemperature = -1.0;
         }
-        Serial.print("\t");
-        Serial.print("\nAmbientTemperature: ");
-        if (isnan(ambientTemperature)) {
-            Serial.print("n/a");
-        } else {
-            Serial.print(ambientTemperature);
-        }
-        Serial.print("\t");
-        Serial.print("\nVocIndex: ");
-        if (isnan(vocIndex)) {
-            Serial.print("n/a");
-        } else {
-            Serial.print(vocIndex);
-        }
-        Serial.print("\t\n");
+        if (isnan(vocIndex)) { //if vocIndex is n/a
+            vocIndex = -1.0;
+        } 
+      
+        snprintf(buffer, buffer_size, "SEN 54\t\nMassConcentrationPm1p0: %0.01f \t\nMassConcentrationPm2p5: %0.01f \t\nMassConcentrationPm4p0: %0.01f \t\nMassConcentrationPm10p0: %0.01f \t\nAmbientHumidity: %0.01f \t\nAmbientTemperature: %0.01f \t\nVocIndex: %0.01f \t\n",
+        massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0, massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex);
+
+        String formatted_string = buffer;
+        Serial.print(formatted_string);
+        delete[] buffer; //clean buffer
     }
 
     vTaskDelay(1000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
     //measures how many bytes the task is using
-    UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
-    Serial.printf("High-water mark: %u bytes\n", highWater * sizeof(StackType_t));
+    UBaseType_t high_water = uxTaskGetStackHighWaterMark(NULL);
+    Serial.printf("High-water mark: %u bytes\n", high_water * sizeof(StackType_t));
   }
 
 }
