@@ -27,6 +27,9 @@ Adafruit_BMP280 bmp;
 SensirionI2CSen5x sen5x;
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
+//global variables
+char buffer[512];
+
 //setup functions
 void initBmp280(){
   unsigned status;
@@ -115,50 +118,34 @@ void vMainGetDataSen54(void* parameters){
 
   for(;;){
     uint16_t error;
-    size_t buffer_size = 257;
-    char* buffer = new char[256];
+    char err_msg[256];
 
     //data vars
-    float massConcentrationPm1p0;
-    float massConcentrationPm2p5;
-    float massConcentrationPm4p0;
-    float massConcentrationPm10p0;
-    float ambientHumidity;
-    float ambientTemperature;
-    float vocIndex;
-    float noxIndex;
+    float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox;
 
     //gets values and auto fills error msg if any errors come up
-    error = sen5x.readMeasuredValues(
-        massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0,
-        massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex, noxIndex);
+    error = sen5x.readMeasuredValues(mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox);
 
     if (error) {
-        errorToString(error, buffer, 256);
-        snprintf(buffer, buffer_size, "SEN 54\nError trying to execute readMeasuredValues(): %s", buffer);
-        String formatted_str = buffer; //converts char array to string
-        Serial.print(buffer);
-        delete[] buffer; //clean buffer
+        errorToString(error, err_msg, sizeof(err_msg));
+        snprintf(buffer, sizeof(buffer), "SEN 54\nError trying to execute readMeasuredValues(): %s", err_msg);
     } else {
-        if (isnan(ambientHumidity)) { //if humidity is n/a
-            ambientHumidity = -1.0;
-        } 
-        if (isnan(ambientTemperature)) { //if temp is n/a
-            ambientTemperature = -1.0;
-        }
-        if (isnan(vocIndex)) { //if vocIndex is n/a
-            vocIndex = -1.0;
-        } 
+        //if humidity is n/a
+        if (isnan(hum)) hum = -1.0;
+        //if temp is n/a
+        if (isnan(temp)) temp = -1.0;
+        //if vocIndex is n/a     
+        if (isnan(voc)) voc = -1.0;
       
-        snprintf(buffer, buffer_size, "SEN 54\t\nMassConcentrationPm1p0: %0.01f \t\nMassConcentrationPm2p5: %0.01f \t\nMassConcentrationPm4p0: %0.01f \t\nMassConcentrationPm10p0: %0.01f \t\nAmbientHumidity: %0.01f \t\nAmbientTemperature: %0.01f \t\nVocIndex: %0.01f \t\n",
-        massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0, massConcentrationPm10p0, ambientHumidity, ambientTemperature, vocIndex);
-
-        String formatted_string = buffer;
-        Serial.print(formatted_string);
-        delete[] buffer; //clean buffer
+        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\n",
+        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc);
     }
 
+    //print final message here
+    Serial.print(buffer);
+    
     vTaskDelay(1000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+    
     //measures how many bytes the task is using
     UBaseType_t high_water = uxTaskGetStackHighWaterMark(NULL);
     Serial.printf("High-water mark: %u bytes\n", high_water * sizeof(StackType_t));
@@ -170,14 +157,16 @@ void vMainGetDataMq9(void* parameters){
   vTaskDelay(1500 / portTICK_PERIOD_MS);
 
   for(;;){
-  Serial.print("\nMQ-9\n==========================================");
+  Serial.print("MQ-9\n\t");
   MQ9.update();
-
   MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
-  float CH4 = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
+  float methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
   
-  Serial.print("\nMethane: "); Serial.print(CH4); Serial.print("\n");
+  snprintf(buffer, sizeof(buffer), "MQ-9\nMethane: %0.01f\n\n", methane);
+  Serial.print(buffer);
+
   vTaskDelay(500 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+  
   //measures how many bytes the task is using
   UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
   Serial.printf("\nHigh-water mark: %u bytes\n", highWater * sizeof(StackType_t));
@@ -188,21 +177,15 @@ void vMainGetDataBmp280(void* parameters){
   vTaskDelay(1500 / portTICK_PERIOD_MS);
 
   for (;;){
-  Serial.print("\nBMP 280\n==========================================\n");
-  Serial.print(F("Temperature = "));
-  Serial.print(bmp.readTemperature());
-  Serial.println(" *C");
+  float temp = bmp.readTemperature();
+  float pressure = bmp.readPressure();
+  float alt = bmp.readAltitude(1020); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
 
-  Serial.print(F("Pressure = "));
-  Serial.print(bmp.readPressure());
-  Serial.println(" Pa");
+  snprintf(buffer, sizeof(buffer), "BMP 280\nTempreature: %0.01f *C\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\n", temp, pressure, alt);
+  Serial.print(buffer);
 
-  Serial.print(F("Approx altitude = "));
-  Serial.print(bmp.readAltitude(1020)); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
-  Serial.println(" m");
-
-  Serial.println();
   vTaskDelay(500 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+  
   //measures how many bytes the task is using
   UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
   Serial.printf("High-water mark: %u bytes\n", highWater * sizeof(StackType_t));
@@ -216,21 +199,21 @@ void setup() {
   //tasks
   xTaskCreate(vMainGetDataSen54,  //function name
   "Get Data from Sen54",          //task name
-  4096,                           //stack size
+  2600,                           //stack size
   NULL,                           //task paramaters
   3,                              //priority
   NULL);                          //task handle
 
   xTaskCreate(vMainGetDataBmp280, //function name
   "Get Data from BMP 280",        //task name
-  2048,                           //stack size
+  128,                           //stack size
   NULL,                           //task paramaters
   2,                              //priority
   NULL);                          //task handle
 
   xTaskCreate(vMainGetDataMq9,  //function name
   "Get Data from MQ-9",         //task name
-  2048,                         //stack size
+  256,                         //stack size
   NULL,                         //task paramaters
   1,                            //priority
   NULL);                        //task handle
