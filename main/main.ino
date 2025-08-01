@@ -3,6 +3,7 @@
 #include <SensirionI2CSen5x.h>
 #include <Adafruit_BMP280.h>
 #include <MQUnifiedsensor.h>
+#include "esp_task_wdt.h" //watchdog :)))))))))))))
 
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
@@ -29,6 +30,19 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 //global variables
 char buffer[512];
+
+const esp_task_wdt_config_t wdt_cfg = {
+    .timeout_ms      = 5000,                      // 5 seconds
+    .idle_core_mask  = 0,  
+    .trigger_panic   = true,
+};
+
+//task handlers
+TaskHandle_t task_sen54_handle = NULL;
+TaskHandle_t task_bmp280_handle = NULL;
+TaskHandle_t task_mq9_handle = NULL;
+TaskHandle_t task_ble_conn_handle = NULL;
+TaskHandle_t task_analysis_handle = NULL;
 
 //setup functions
 void initBmp280(){
@@ -110,11 +124,12 @@ void initSen54(){
         Serial.println(errorMessage);
     }
 }
-
+void initBLE(){
+}
 //task functions - right now only prints values into serial monitor.
 void vMainGetDataSen54(void* parameters){
   initSen54();
-  vTaskDelay(1500 / portTICK_PERIOD_MS);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
 
   for(;;){
     uint16_t error;
@@ -144,20 +159,21 @@ void vMainGetDataSen54(void* parameters){
     //print final message here
     Serial.print(buffer);
     
-    vTaskDelay(1000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+    ESP_ERROR_CHECK(esp_task_wdt_reset());
+    vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+      
+  /***measures how many bytes are free from the stack size allocated
+    UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+    Serial.printf("\nSen 54: %u bytes\n\n\n", free_bytes);
+    **/
     
-    //measures how many bytes the task is using
-    UBaseType_t high_water = uxTaskGetStackHighWaterMark(NULL);
-    Serial.printf("High-water mark: %u bytes\n", high_water * sizeof(StackType_t));
   }
-
 }
 void vMainGetDataMq9(void* parameters){
   initMq9();
   vTaskDelay(1500 / portTICK_PERIOD_MS);
 
   for(;;){
-  Serial.print("MQ-9\n\t");
   MQ9.update();
   MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
   float methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
@@ -165,11 +181,14 @@ void vMainGetDataMq9(void* parameters){
   snprintf(buffer, sizeof(buffer), "MQ-9\nMethane: %0.01f\n\n", methane);
   Serial.print(buffer);
 
-  vTaskDelay(500 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+  ESP_ERROR_CHECK(esp_task_wdt_reset());
+
+  vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
   
-  //measures how many bytes the task is using
-  UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
-  Serial.printf("\nHigh-water mark: %u bytes\n", highWater * sizeof(StackType_t));
+  /***measures how many bytes are free from the stack size allocated 
+  UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+  Serial.printf("\nMq-9: %u bytes\n\n\n", free_bytes);
+  **/
   }
 }
 void vMainGetDataBmp280(void* parameters){
@@ -184,41 +203,81 @@ void vMainGetDataBmp280(void* parameters){
   snprintf(buffer, sizeof(buffer), "BMP 280\nTempreature: %0.01f *C\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\n", temp, pressure, alt);
   Serial.print(buffer);
 
-  vTaskDelay(500 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
+  ESP_ERROR_CHECK(esp_task_wdt_reset());
+  vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
   
-  //measures how many bytes the task is using
-  UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
-  Serial.printf("High-water mark: %u bytes\n", highWater * sizeof(StackType_t));
+  /**measures how many bytes are free from the stack size allocated
+  UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+  Serial.printf("\nBMP 280: %u bytes\n\n\n", free_bytes);
+  **/
   }
+}
+void vMainDoAnalyis(void* parameters){
+}
+void vMainConnBLE(void* parameters){
 }
 
 void setup() { 
   Serial.begin(115200);
   Wire.begin();
+  
+  //init watchdog
+  static bool wdt_inited = false;
 
-  //tasks
+  if (!wdt_inited){
+    ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
+    wdt_inited = true;
+  }
+  
+
+  //tasks - increase stack allocation if running free bytes script
   xTaskCreate(vMainGetDataSen54,  //function name
   "Get Data from Sen54",          //task name
-  2600,                           //stack size
+  2500,                           //stack size
   NULL,                           //task paramaters
   3,                              //priority
-  NULL);                          //task handle
+  &task_sen54_handle);             //task handle
 
   xTaskCreate(vMainGetDataBmp280, //function name
   "Get Data from BMP 280",        //task name
-  128,                           //stack size
+  2400,                           //stack size
   NULL,                           //task paramaters
   2,                              //priority
-  NULL);                          //task handle
+  &task_bmp280_handle);           //task handle
 
   xTaskCreate(vMainGetDataMq9,  //function name
   "Get Data from MQ-9",         //task name
-  256,                         //stack size
+  2048,                         //stack size
   NULL,                         //task paramaters
   1,                            //priority
-  NULL);                        //task handle
+  &task_mq9_handle);            //task handle
+
+  /**
+  xTaskCreate(vMainDoAnalyis, 
+  "Do data analysis",        
+  2400,                          
+  NULL,                          
+  4,                            
+  &task_analysis_handle);          
+
+  xTaskCreate(vMainConnBLE,  
+  "Connect BLE",         
+  2048,                            
+  NULL,                           
+  5,                                 
+  &task_ble_conn_handle);            
+  **/
+
+  //subscribing tasks to watchdog
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_sen54_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_bmp280_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_mq9_handle));
+
+  /***
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_ble_conn_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
+  **/
 }
 
 void loop() {
-
 }
