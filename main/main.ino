@@ -38,8 +38,7 @@ const esp_task_wdt_config_t wdt_cfg = {
 };
 
 //task handlers
-TaskHandle_t task_sen54_handle = NULL;
-TaskHandle_t task_bmp280_handle = NULL;
+TaskHandle_t task_i2c_sensors_handle = NULL;
 TaskHandle_t task_mq9_handle = NULL;
 TaskHandle_t task_ble_conn_handle = NULL;
 TaskHandle_t task_analysis_handle = NULL;
@@ -126,17 +125,20 @@ void initSen54(){
 }
 void initBLE(){
 }
+
 //task functions - right now only prints values into serial monitor.
-void vMainGetDataSen54(void* parameters){
+void vMainGetDataI2cSensors(void* parameters){
   initSen54();
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  initBmp280();
+  vTaskDelay(1000 / portTICK_PERIOD_MS);  
 
   for(;;){
     uint16_t error;
     char err_msg[256];
 
     //data vars
-    float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox;
+    float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox, pressure, alt;
 
     //gets values and auto fills error msg if any errors come up
     error = sen5x.readMeasuredValues(mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox);
@@ -151,9 +153,12 @@ void vMainGetDataSen54(void* parameters){
         if (isnan(temp)) temp = -1.0;
         //if vocIndex is n/a     
         if (isnan(voc)) voc = -1.0;
-      
-        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\n",
-        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc);
+
+        pressure = bmp.readPressure();
+        alt = bmp.readAltitude(1020); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
+
+        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\nBMP 280\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\n",
+        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt);
     }
 
     //print final message here
@@ -164,7 +169,7 @@ void vMainGetDataSen54(void* parameters){
       
   /***measures how many bytes are free from the stack size allocated
     UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-    Serial.printf("\nSen 54: %u bytes\n\n\n", free_bytes);
+    Serial.printf("%u bytes\n\n\n", free_bytes);
     **/
     
   }
@@ -191,27 +196,6 @@ void vMainGetDataMq9(void* parameters){
   **/
   }
 }
-void vMainGetDataBmp280(void* parameters){
-  initBmp280();
-  vTaskDelay(1500 / portTICK_PERIOD_MS);
-
-  for (;;){
-  float temp = bmp.readTemperature();
-  float pressure = bmp.readPressure();
-  float alt = bmp.readAltitude(1020); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
-
-  snprintf(buffer, sizeof(buffer), "BMP 280\nTempreature: %0.01f *C\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\n", temp, pressure, alt);
-  Serial.print(buffer);
-
-  ESP_ERROR_CHECK(esp_task_wdt_reset());
-  vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
-  
-  /**measures how many bytes are free from the stack size allocated
-  UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-  Serial.printf("\nBMP 280: %u bytes\n\n\n", free_bytes);
-  **/
-  }
-}
 void vMainDoAnalyis(void* parameters){
 }
 void vMainConnBLE(void* parameters){
@@ -231,19 +215,12 @@ void setup() {
   
 
   //tasks - increase stack allocation if running free bytes script
-  xTaskCreate(vMainGetDataSen54,  //function name
+  xTaskCreate(vMainGetDataI2cSensors,  //function name
   "Get Data from Sen54",          //task name
   2500,                           //stack size
   NULL,                           //task paramaters
   3,                              //priority
-  &task_sen54_handle);             //task handle
-
-  xTaskCreate(vMainGetDataBmp280, //function name
-  "Get Data from BMP 280",        //task name
-  2400,                           //stack size
-  NULL,                           //task paramaters
-  2,                              //priority
-  &task_bmp280_handle);           //task handle
+  &task_i2c_sensors_handle);             //task handle
 
   xTaskCreate(vMainGetDataMq9,  //function name
   "Get Data from MQ-9",         //task name
@@ -269,8 +246,7 @@ void setup() {
   **/
 
   //subscribing tasks to watchdog
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_sen54_handle));
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_bmp280_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_i2c_sensors_handle));
   ESP_ERROR_CHECK( esp_task_wdt_add(task_mq9_handle));
 
   /***
