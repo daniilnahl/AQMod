@@ -4,6 +4,7 @@
 #include <Adafruit_BMP280.h>
 #include <MQUnifiedsensor.h>
 #include "esp_task_wdt.h" //watchdog :)))))))))))))
+#include "queue.h" //mister queue
 
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
@@ -30,18 +31,21 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 //global variables
 char buffer[512];
+volatile bool sen54_warmed = false;
 
 const esp_task_wdt_config_t wdt_cfg = {
-    .timeout_ms      = 5000,                      // 5 seconds
+    .timeout_ms      = 10000,                      // 5 seconds
     .idle_core_mask  = 0,  
     .trigger_panic   = true,
 };
 
-//task handlers
-TaskHandle_t task_i2c_sensors_handle = NULL;
-TaskHandle_t task_mq9_handle = NULL;
+
+//handlers
+TaskHandle_t task_sensors_handle = NULL;
 TaskHandle_t task_ble_conn_handle = NULL;
 TaskHandle_t task_analysis_handle = NULL;
+
+xQueueHandle data_queue = NULL;
 
 //setup functions
 void initBmp280(){
@@ -122,23 +126,30 @@ void initSen54(){
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     }
+
+    delay(60000); //sensor warmup for correct pm readings
 }
 void initBLE(){
 }
 
 //task functions - right now only prints values into serial monitor.
-void vMainGetDataI2cSensors(void* parameters){
+void vMainGetDataSensors(void* parameters){
   initSen54();
   vTaskDelay(1000 / portTICK_PERIOD_MS);
   initBmp280();
   vTaskDelay(1000 / portTICK_PERIOD_MS);  
+  initMq9();
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   for(;;){
+    MQ9.update();
+    MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
+
     uint16_t error;
     char err_msg[256];
 
     //data vars
-    float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox, pressure, alt;
+    float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox, pressure, alt, methane;
 
     //gets values and auto fills error msg if any errors come up
     error = sen5x.readMeasuredValues(mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox);
@@ -156,47 +167,34 @@ void vMainGetDataI2cSensors(void* parameters){
 
         pressure = bmp.readPressure();
         alt = bmp.readAltitude(1020); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
+        methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
+        
+        
+        float data[10] = {mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane};
 
-        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\nBMP 280\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\n",
-        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt);
+        //if queue has room send it if not skip 
+        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\nBMP 280\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\nMQ-9\nMethane = %0.01f\n\n",
+        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane);
     }
 
     //print final message here
     Serial.print(buffer);
+
+  //measures how many bytes are free from the stack size allocated
+    // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+    // Serial.printf("%u bytes\n\n\n", free_bytes);
     
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
-      
-  /***measures how many bytes are free from the stack size allocated
-    UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-    Serial.printf("%u bytes\n\n\n", free_bytes);
-    **/
-    
   }
 }
-void vMainGetDataMq9(void* parameters){
-  initMq9();
-  vTaskDelay(1500 / portTICK_PERIOD_MS);
 
-  for(;;){
-  MQ9.update();
-  MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
-  float methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
-  
-  snprintf(buffer, sizeof(buffer), "MQ-9\nMethane: %0.01f\n\n", methane);
-  Serial.print(buffer);
-
-  ESP_ERROR_CHECK(esp_task_wdt_reset());
-
-  vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
-  
-  /***measures how many bytes are free from the stack size allocated 
-  UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-  Serial.printf("\nMq-9: %u bytes\n\n\n", free_bytes);
-  **/
-  }
-}
 void vMainDoAnalyis(void* parameters){
+
+
+  //for assigning data: do a loop of if commands checking against a hashmap of arrays then assign good, fair or poor
+  //receive data from task, 'sort' by task, grade data, send to serial (when ble is setup sent to ble)
+  //reuse the function code, snprintf()
 }
 void vMainConnBLE(void* parameters){
 }
@@ -212,22 +210,19 @@ void setup() {
     ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
     wdt_inited = true;
   }
-  
+
+
+  float temp[10];
+
+  data_queue = xQueueCreate(3, 11 * sizeof(float));
 
   //tasks - increase stack allocation if running free bytes script
-  xTaskCreate(vMainGetDataI2cSensors,  //function name
-  "Get Data from Sen54",          //task name
-  2500,                           //stack size
-  NULL,                           //task paramaters
-  3,                              //priority
-  &task_i2c_sensors_handle);             //task handle
-
-  xTaskCreate(vMainGetDataMq9,  //function name
-  "Get Data from MQ-9",         //task name
-  2048,                         //stack size
-  NULL,                         //task paramaters
-  1,                            //priority
-  &task_mq9_handle);            //task handle
+  xTaskCreate(vMainGetDataSensors,  //function name
+  "Get sensors data",               //task name
+  2800,                             //stack size
+  NULL,                             //task paramaters
+  2,                                //priority
+  &task_sensors_handle);            //task handle
 
   /**
   xTaskCreate(vMainDoAnalyis, 
@@ -246,9 +241,7 @@ void setup() {
   **/
 
   //subscribing tasks to watchdog
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_i2c_sensors_handle));
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_mq9_handle));
-
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
   /***
   ESP_ERROR_CHECK( esp_task_wdt_add(task_ble_conn_handle));
   ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
