@@ -35,3 +35,7 @@ Soldered bmp280 pins. First time soldering, it was pretty cool. Then started set
 
 #### 08/08
 - run sen54 cleaning protocol then the debugger code. Otherwise didn't do anything of significance.
+
+#### 08/10
+- pm values are still not working. Tomorrow before beginning work on bluetooth try running the sen54 library command to get pm values as integers and implement fan cleaning each time setup() is ran. 
+- Otherwise, queue is working perfectly. freeRTOS part is officially complete, next fixing sen54 and only then setting up bluetooth.
