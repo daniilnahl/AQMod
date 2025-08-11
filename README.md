@@ -70,7 +70,7 @@
 ---
 
 ## Hardware Setup
-![Schematic](sensors/misc/AQModSchematic.JPG)
+![Schematic](misc/AQModSchematic.JPG)
 
 ---
 
@@ -123,5 +123,6 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
 
 
