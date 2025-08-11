@@ -171,7 +171,7 @@ void vMainGetDataSensors(void* parameters){
     float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox, pressure, alt, methane;
 
     //gets values and auto fills error msg if any errors come up
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     error = sen5x.readMeasuredValues(mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox);
 
     if (error) {
