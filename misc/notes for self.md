@@ -21,3 +21,17 @@ Soldered bmp280 pins. First time soldering, it was pretty cool. Then started set
 #### 07/28/2025
 - Created placeholder tasks for data analysis and bluetooth.
 - Started learning about watchdog.
+
+#### 07/30-08/01
+- Added a bunch of notes on watchdog and TWDT, turns out its default configured even before I run setup(), the configs happens out of the box, thus I had to reconfig to fit my criterias.
+- Set up watchdog to only watch defined tasks excluding idle tasks because it was simpler. I did it by telling watchdog through config to not subscribe to any of the cores' idle tasks. 
+- Next on agenda is to make a single task for i2c sensors to ensure sensors are not trying to send data through i2c to mcu at the same time which can potentially corrupt data received.
+
+#### 08/07
+- Combined sensor tasks into one reducing stack memory used by tasks from 7000 down to 2800.
+- Created basic algorithm to clasify the quality of each metric based on their value. Simple algorithm, there's defintely a way to improve it. !!!!For now use it and when tinyML is implemented comeback and improve!!!!
+- SEN54 readings are being wack, I need to let the sensor warm up for 60 seconds after running startMeasure...() so it actually gets the pm values. I am thinking of doing moving init functions into a separate task and running them only once using a simple bool flag like the one I have for watchdog init.
+- also run command from sen54 to clean the sensor.
+
+#### 08/08
+- run sen54 cleaning protocol then the debugger code. Otherwise didn't do anything of significance.

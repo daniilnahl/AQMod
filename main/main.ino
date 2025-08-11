@@ -31,7 +31,35 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 //global variables
 char buffer[512];
-volatile bool sen54_warmed = false;
+float queue_metrics[10];
+
+struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
+
+static constexpr Range RANGES[10] = {
+    { 0,  15,   25,   true },  // pm1
+    { 0,  15,   25,   true },  // pm2.5
+    { 0,  45,   75,   true },  // pm4
+    { 0,  45,   75,   true },  // pm10
+    {30,  50,   60,   true },  // humidity
+    { 0,   0,    0,  false },  // temp: special-case (person-dependent)
+    { 0, 300, 1000,   true },  // voc
+    {100000, 102500, 103500, true }, // pressure
+    { 0, 2500, 3500,  true },  // altitude
+    { 0,   10, 1000,  true },  // methane
+};
+
+static constexpr const char* METRIC[10] = {
+    "Mass concentration pm 1um: ",
+    "Mass concentration pm 2.5um: ",
+    "Mass concentration pm 4um: ",
+    "Mass concentration pm 10um: ",
+    "Ambient humidity (%): ",
+    "Ambient temperature (C): ",
+    "VOC index: ",
+    "Pressure (Pa): ",
+    "Approx. altitude (m): ",
+    "Methane: "
+};
 
 const esp_task_wdt_config_t wdt_cfg = {
     .timeout_ms      = 10000,                      // 5 seconds
@@ -126,24 +154,15 @@ void initSen54(){
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     }
-
-    delay(60000); //sensor warmup for correct pm readings
 }
 void initBLE(){
 }
 
 //task functions - right now only prints values into serial monitor.
 void vMainGetDataSensors(void* parameters){
-  initSen54();
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-  initBmp280();
-  vTaskDelay(1000 / portTICK_PERIOD_MS);  
-  initMq9();
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-
   for(;;){
     MQ9.update();
-    MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4     | 4269.6 | -2.648    5v supply.
+    MQ9.setA(4269.6); MQ9.setB(-2.648); //methane values - CH4 | 4269.6 | -2.648    5v supply.
 
     uint16_t error;
     char err_msg[256];
@@ -152,6 +171,7 @@ void vMainGetDataSensors(void* parameters){
     float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox, pressure, alt, methane;
 
     //gets values and auto fills error msg if any errors come up
+    vTaskDelay(50 / portTICK_PERIOD_MS);
     error = sen5x.readMeasuredValues(mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox);
 
     if (error) {
@@ -170,19 +190,17 @@ void vMainGetDataSensors(void* parameters){
         methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
         
         
-        float data[10] = {mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane};
-
-        //if queue has room send it if not skip 
-        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\nBMP 280\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\nMQ-9\nMethane = %0.01f\n\n",
-        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane);
+        float temp_data[10] = {mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane};
+        //send it to the queue
+        xQueueSend(data_queue, temp_data, portMAX_DELAY);
     }
 
     //print final message here
     Serial.print(buffer);
 
   //measures how many bytes are free from the stack size allocated
-    // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-    // Serial.printf("%u bytes\n\n\n", free_bytes);
+  // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+  // Serial.printf("%u bytes\n\n\n", free_bytes);
     
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
@@ -191,11 +209,50 @@ void vMainGetDataSensors(void* parameters){
 
 void vMainDoAnalyis(void* parameters){
 
+  for (;;){
+    if (xQueueReceive(data_queue, queue_metrics, portMAX_DELAY) == pdTRUE){
+    size_t used = 0;
 
+    for (int i = 0; i < 10; i++){
+        const char* quality = nullptr;
+
+        if (!RANGES[i].has) { //metrics that dont have threshold aka only temp
+            int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
+                             "%s%.2f\n", METRIC[i], queue_metrics[i]);
+            used += (n > 0) ? (size_t)n : 0;
+            continue;
+        }
+
+        // classify (mirrors your >= comparisons)
+        if (queue_metrics[i] >= RANGES[i].c)      quality = "Poor";
+        else if (queue_metrics[i] >= RANGES[i].b) quality = "Fair";
+        else if (queue_metrics[i] >= RANGES[i].a) quality = "Good";
+        else                          quality = "Fair/Poor";
+
+        int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
+                         "%s%.2f - %s\n", METRIC[i], queue_metrics[i], quality);
+        used += (n > 0) ? (size_t)n : 0;
+      }
+      snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0, "\n\n");
+
+      //print final message here
+      Serial.println(buffer);
+    }
+
+    // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+    // Serial.printf("%u bytes\n\n\n", free_bytes);
+
+    ESP_ERROR_CHECK(esp_task_wdt_reset());
+    vTaskDelay(3000 / portTICK_PERIOD_MS); 
+    }
+
+
+    
+  }
   //for assigning data: do a loop of if commands checking against a hashmap of arrays then assign good, fair or poor
   //receive data from task, 'sort' by task, grade data, send to serial (when ble is setup sent to ble)
   //reuse the function code, snprintf()
-}
+
 void vMainConnBLE(void* parameters){
 }
 
@@ -203,35 +260,44 @@ void setup() {
   Serial.begin(115200);
   Wire.begin();
   
-  //init watchdog
+  static bool sensors_inited = false;
   static bool wdt_inited = false;
+
+  if (!sensors_inited){
+    initSen54();
+    delay(60000);
+    Serial.println("SEN 54 warm up complete.");
+    initBmp280();
+    delay(1000);
+    Serial.println("BMP 280 warm up complete.");
+    initMq9();
+    delay(1000);
+    Serial.println("MQ 9 warm up complete.");
+    sensors_inited = true;
+  }
 
   if (!wdt_inited){
     ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
     wdt_inited = true;
   }
 
-
-  float temp[10];
-
-  data_queue = xQueueCreate(3, 11 * sizeof(float));
+  data_queue = xQueueCreate(3, 10 * sizeof(float));
 
   //tasks - increase stack allocation if running free bytes script
   xTaskCreate(vMainGetDataSensors,  //function name
   "Get sensors data",               //task name
-  2800,                             //stack size
+  2600,                             //stack size
   NULL,                             //task paramaters
-  2,                                //priority
+  1,                                //priority
   &task_sensors_handle);            //task handle
 
-  /**
   xTaskCreate(vMainDoAnalyis, 
   "Do data analysis",        
-  2400,                          
+  2200,                          
   NULL,                          
-  4,                            
+  2,                            
   &task_analysis_handle);          
-
+  /**
   xTaskCreate(vMainConnBLE,  
   "Connect BLE",         
   2048,                            
@@ -242,6 +308,8 @@ void setup() {
 
   //subscribing tasks to watchdog
   ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
+
   /***
   ESP_ERROR_CHECK( esp_task_wdt_add(task_ble_conn_handle));
   ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));

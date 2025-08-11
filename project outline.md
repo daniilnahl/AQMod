@@ -9,21 +9,20 @@
 
 ### Scope of Work
 1. **Hardware & Electrical**
-- ~Breadboard prototyping with each sensor connected.~
-- ~Verify each sensor (BMP280, MQ-9, SEN54, MS-1100) with simple scripts.~
-- ~Calibrate sensors.~
-- ~Setup power module to supply voltage to esp32.~
+- ~~Breadboard prototyping with each sensor connected.~~
+- ~~Verify each sensor (BMP280, MQ-9, SEN54, MS-1100) with simple scripts.~~
+- ~~Calibrate sensors.~~
+- ~~Setup power module to supply voltage to esp32.~~
 
 2. **RTOS Integration**
-- ~setup FreeRTOS task toggling an LED to confirm scheduler and toolchain.~
-- ~Add one sensor per task, use vTaskDelay() for timing;~ queue all readings to a single processor task.
-- Setup Single FreeRTOS queue(fifo inter task comm.) for sensor→analysis; 
-- ~Enable watchdog to auto-reset on deadlock.~
+- ~~setup FreeRTOS task toggling an LED to confirm scheduler and toolchain.~~
+- ~~Add one sensor per task, use vTaskDelay() for timing; queue all readings to a single processor task.~~
+- ~~Setup Single FreeRTOS queue(fifo inter task comm.) for sensor→analysis; analysis function prints the data to serial with labels, after checking each value.~~
+- ~~Enable watchdog to auto-reset on deadlock.~~
 
 3. **Data Analysis & Scoring**
-- Determine Green/Yellow/Red thresholds
-- Hard-code using one sensor (e.g. MQ-9 CO) based on datasheet/EPA first.
-- on device Simple smoothing or median filter before scoring.
+- ~~Determine Green/Yellow/Red thresholds~~
+- ~~Hard-code using one sensor (e.g. MQ-9 CO) based on datasheet/EPA first.~~
 
 4. **Bluetooth**
 - Follow the tutorial in notes to setup bluetooth connection.
