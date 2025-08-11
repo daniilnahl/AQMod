@@ -41,7 +41,7 @@
 ## Project Milestones
 
 1. ~~First working prototype~~ COMPLETED on 07/17/2025
-2. RTOS Integration
+2. ~~RTOS Integration~~ COMPLETED on 08/10/2025
 3. Bluetooth Connectivity
 4. TinyML Anomaly Detection
 
@@ -123,4 +123,5 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
 
