@@ -158,7 +158,7 @@ void initSen54(){
 void initBLE(){
 }
 
-//task functions - right now only prints values into serial monitor.
+//task functions - right now only prints values into serial monitor. /
 void vMainGetDataSensors(void* parameters){
   for(;;){
     MQ9.update();
