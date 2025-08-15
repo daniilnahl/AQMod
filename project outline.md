@@ -25,8 +25,12 @@
 - ~~Hard-code using one sensor (e.g. MQ-9 CO) based on datasheet/EPA first.~~
 
 4. **Bluetooth**
-- Follow the tutorial in notes to setup bluetooth connection.
-- Add some sort of encryption.
+- ~~Follow the tutorial in notes to setup bluetooth connection.~~
+- ~~fix that when I disconnect from ble on my phone I cant find the device anymore.~~
+- give a name for the service
+
+4.5 **Required Fixes before TinyML**
+- Fix Sen54 sensor reporting junk data.
 
 5. **TinyML Anomaly Detection**
 - Run RTOS+BLE loop overnight → log “normal” CSV.

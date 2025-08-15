@@ -5,6 +5,17 @@
 #include <MQUnifiedsensor.h>
 #include "esp_task_wdt.h" //watchdog :)))))))))))))
 #include "queue.h" //mister queue
+#include <BLEDevice.h> 
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+//BLE init
+#define SERVICE_UUID        "693aa0e4-7b2f-4350-bf38-e3d73f2b2a8f" //uniquely generated
+#define CHARACTERISTIC_UUID "6d11c04a-78fd-4ae7-8b6e-2a9527d4380e"
+
+BLEServer *pServer;
+BLEService *pService;
+BLECharacteristic *pCharacteristic;
 
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
@@ -24,7 +35,7 @@
 #define USE_PRODUCT_INFO
 #endif
 
-//Sensor initialization
+//Sensor init
 Adafruit_BMP280 bmp; 
 SensirionI2CSen5x sen5x;
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
@@ -32,6 +43,22 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 //global variables
 char buffer[512];
 float queue_metrics[10];
+volatile bool device_connected = false;
+volatile bool old_device_connected = false;
+
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer *pServer) {
+    Serial.println("BLE device connected!");
+    device_connected = true;
+  };
+
+  void onDisconnect(BLEServer *pServer) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("BLE device disconnected!\nRestarting advertising...");
+    device_connected = false;
+  }
+};
 
 struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
 
@@ -66,8 +93,6 @@ const esp_task_wdt_config_t wdt_cfg = {
     .idle_core_mask  = 0,  
     .trigger_panic   = true,
 };
-
-
 //handlers
 TaskHandle_t task_sensors_handle = NULL;
 TaskHandle_t task_ble_conn_handle = NULL;
@@ -106,7 +131,7 @@ void initMq9(){
   MQ9.setRL(10);
 
   //Calibration
-  Serial.print("Calibrating please wait.");
+  Serial.print("MQ 9: Calibrating please wait.");
   float calcR0 = 0;
   for(int i = 1; i<=10; i ++)
   {
@@ -119,9 +144,6 @@ void initMq9(){
   
   if(isinf(calcR0)) {Serial.println("Warning: Conection issue, R0 is infinite (Open circuit detected) please check your wiring and supply"); while(1);}
   if(calcR0 == 0){Serial.println("Warning: Conection issue found, R0 is zero (Analog pin shorts to ground) please check your wiring and supply"); while(1);}
-  /*****************************  MQ CAlibration ********************************************/ 
-  Serial.println("** Values from MQ-9 ****");
-  Serial.println("  CH4  ");  
 }
 void initSen54(){
     sen5x.begin(Wire);
@@ -142,9 +164,9 @@ void initSen54(){
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     } else {
-        Serial.print("Temperature Offset set to ");
-        Serial.print(tempOffset);
-        Serial.println(" deg. Celsius (SEN54/SEN55 only");
+        //Serial.print("Temperature Offset set to ");
+        //Serial.print(tempOffset);
+        //Serial.println(" deg. Celsius (SEN54/SEN55 only");
     }
 
     // Start Measurement
@@ -156,9 +178,24 @@ void initSen54(){
     }
 }
 void initBLE(){
+  BLEDevice::init("AQMod-Server");
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+  pService = pServer->createService(SERVICE_UUID);
+  pCharacteristic = pService->createCharacteristic(
+                                         CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ);
+
+  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ); //enforces read only access
+  pCharacteristic->setValue("Air quality data and analysis.");
+  pService->start();
+
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->start();
 }
 
-//task functions - right now only prints values into serial monitor.
 void vMainGetDataSensors(void* parameters){
   for(;;){
     MQ9.update();
@@ -166,12 +203,9 @@ void vMainGetDataSensors(void* parameters){
 
     uint16_t error;
     char err_msg[256];
-
-    //data vars
     float mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox, pressure, alt, methane;
 
-    //gets values and auto fills error msg if any errors come up
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     error = sen5x.readMeasuredValues(mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, nox);
 
     if (error) {
@@ -194,14 +228,11 @@ void vMainGetDataSensors(void* parameters){
         //send it to the queue
         xQueueSend(data_queue, temp_data, portMAX_DELAY);
     }
-
-    //print final message here
-    Serial.print(buffer);
-
-  //measures how many bytes are free from the stack size allocated
-  // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-  // Serial.printf("%u bytes\n\n\n", free_bytes);
-    
+  /***
+  measures how many bytes are free from the stack size allocated
+  UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+  Serial.printf("%u bytes\n\n\n", free_bytes);
+  ***/ 
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
   }
@@ -223,7 +254,6 @@ void vMainDoAnalyis(void* parameters){
             continue;
         }
 
-        // classify (mirrors your >= comparisons)
         if (queue_metrics[i] >= RANGES[i].c)      quality = "Poor";
         else if (queue_metrics[i] >= RANGES[i].b) quality = "Fair";
         else if (queue_metrics[i] >= RANGES[i].a) quality = "Good";
@@ -235,26 +265,25 @@ void vMainDoAnalyis(void* parameters){
       }
       snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0, "\n\n");
 
-      //print final message here
       Serial.println(buffer);
-    }
 
-    // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-    // Serial.printf("%u bytes\n\n\n", free_bytes);
+      if (device_connected){ //connected
+        pCharacteristic->setValue((uint8_t*)buffer, strnlen(buffer, sizeof(buffer)));
+      }
+      
+      if (!device_connected && old_device_connected){ //disconected
+        old_device_connected = device_connected;
+      }
+
+      if (device_connected && !old_device_connected) { //connecting
+        old_device_connected = device_connected;
+      }
+    }
 
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); 
     }
-
-
-    
   }
-  //for assigning data: do a loop of if commands checking against a hashmap of arrays then assign good, fair or poor
-  //receive data from task, 'sort' by task, grade data, send to serial (when ble is setup sent to ble)
-  //reuse the function code, snprintf()
-
-void vMainConnBLE(void* parameters){
-}
 
 void setup() { 
   Serial.begin(115200);
@@ -262,6 +291,13 @@ void setup() {
   
   static bool sensors_inited = false;
   static bool wdt_inited = false;
+  static bool ble_inited = false;
+
+  if (!ble_inited){
+    initBLE();
+    delay(500);
+    Serial.println("BLE initialized.");
+  }
 
   if (!sensors_inited){
     initSen54();
@@ -297,23 +333,10 @@ void setup() {
   NULL,                          
   2,                            
   &task_analysis_handle);          
-  /**
-  xTaskCreate(vMainConnBLE,  
-  "Connect BLE",         
-  2048,                            
-  NULL,                           
-  5,                                 
-  &task_ble_conn_handle);            
-  **/
 
   //subscribing tasks to watchdog
   ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
   ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
-
-  /***
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_ble_conn_handle));
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
-  **/
 }
 
 void loop() {
