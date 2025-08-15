@@ -5,6 +5,17 @@
 #include <MQUnifiedsensor.h>
 #include "esp_task_wdt.h" //watchdog :)))))))))))))
 #include "queue.h" //mister queue
+#include <BLEDevice.h> 
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+//BLE sutff
+#define SERVICE_UUID        "693aa0e4-7b2f-4350-bf38-e3d73f2b2a8f" //uniquely generated
+#define CHARACTERISTIC_UUID "6d11c04a-78fd-4ae7-8b6e-2a9527d4380e"
+
+BLEServer *pServer;
+BLEService *pService;
+BLECharacteristic *pCharacteristic;
 
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
@@ -106,7 +117,7 @@ void initMq9(){
   MQ9.setRL(10);
 
   //Calibration
-  Serial.print("Calibrating please wait.");
+  Serial.print("MQ 9: Calibrating please wait.");
   float calcR0 = 0;
   for(int i = 1; i<=10; i ++)
   {
@@ -119,9 +130,6 @@ void initMq9(){
   
   if(isinf(calcR0)) {Serial.println("Warning: Conection issue, R0 is infinite (Open circuit detected) please check your wiring and supply"); while(1);}
   if(calcR0 == 0){Serial.println("Warning: Conection issue found, R0 is zero (Analog pin shorts to ground) please check your wiring and supply"); while(1);}
-  /*****************************  MQ CAlibration ********************************************/ 
-  Serial.println("** Values from MQ-9 ****");
-  Serial.println("  CH4  ");  
 }
 void initSen54(){
     sen5x.begin(Wire);
@@ -142,9 +150,9 @@ void initSen54(){
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     } else {
-        Serial.print("Temperature Offset set to ");
-        Serial.print(tempOffset);
-        Serial.println(" deg. Celsius (SEN54/SEN55 only");
+        //Serial.print("Temperature Offset set to ");
+        //Serial.print(tempOffset);
+        //Serial.println(" deg. Celsius (SEN54/SEN55 only");
     }
 
     // Start Measurement
@@ -156,6 +164,22 @@ void initSen54(){
     }
 }
 void initBLE(){
+  BLEDevice::init("AQMod-Server");
+  pServer = BLEDevice::createServer();
+  pService = pServer->createService(SERVICE_UUID);
+  pCharacteristic = pService->createCharacteristic(
+                                         CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ
+                                       );
+
+  pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ); //enforces read only access
+  pCharacteristic->setValue("Hello World");
+  pService->start();
+
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->start();
 }
 
 //task functions - right now only prints values into serial monitor. /
@@ -237,6 +261,7 @@ void vMainDoAnalyis(void* parameters){
 
       //print final message here
       Serial.println(buffer);
+      pCharacteristic->setValue((uint8_t*)buffer, strnlen(buffer, sizeof(buffer)));
     }
 
     // UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
@@ -262,6 +287,13 @@ void setup() {
   
   static bool sensors_inited = false;
   static bool wdt_inited = false;
+  static bool ble_inited = false;
+
+  if (!ble_inited){
+    initBLE();
+    delay(500);
+    Serial.println("BLE initialized.");
+  }
 
   if (!sensors_inited){
     initSen54();
