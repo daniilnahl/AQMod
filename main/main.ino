@@ -276,7 +276,6 @@ void vMainDoAnalyis(void* parameters){
       }
 
       if (device_connected && !old_device_connected) { //connecting
-        Serial.println("BLE device connecting...");
         old_device_connected = device_connected;
       }
     }
