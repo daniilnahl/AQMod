@@ -27,7 +27,6 @@
 4. **Bluetooth**
 - ~~Follow the tutorial in notes to setup bluetooth connection.~~
 - ~~fix that when I disconnect from ble on my phone I cant find the device anymore.~~
-- give a name for the service
 
 4.5 **Required Fixes before TinyML**
 - Fix Sen54 sensor reporting junk data.
