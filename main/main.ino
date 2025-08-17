@@ -176,6 +176,7 @@ void initSen54(){
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     }
+    sen5x.startFanCleaning();
 }
 void initBLE(){
   BLEDevice::init("AQMod-Server");
@@ -239,7 +240,6 @@ void vMainGetDataSensors(void* parameters){
 }
 
 void vMainDoAnalyis(void* parameters){
-
   for (;;){
     if (xQueueReceive(data_queue, queue_metrics, portMAX_DELAY) == pdTRUE){
     size_t used = 0;
