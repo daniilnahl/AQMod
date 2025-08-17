@@ -89,7 +89,7 @@ static constexpr const char* METRIC[10] = {
 };
 
 const esp_task_wdt_config_t wdt_cfg = {
-    .timeout_ms      = 10000,                      // 5 seconds
+    .timeout_ms      = 10000,                      // 10 seconds
     .idle_core_mask  = 0,  
     .trigger_panic   = true,
 };
@@ -301,7 +301,7 @@ void setup() {
 
   if (!sensors_inited){
     initSen54();
-    delay(60000);
+    delay(63000);
     Serial.println("SEN 54 warm up complete.");
     initBmp280();
     delay(1000);
