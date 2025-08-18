@@ -37,6 +37,10 @@
 - BMP 280 is responsible for tracking temperature, pressure and altitude.
 - SEN 54 is responsible for tracking particulate matters, humidity, temperature and voc index.
 
+### Demonstration
+[![Demonstration video 1](https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExeG52dTAweGhvN3hzNnFsNTk2dHJxdTlwNnhpNXB1OXNjdHJkc2RsdSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/WigBvEbSp0v5ljpwq8/giphy.gif)](https://youtu.be/7I6uvrYwucg)
+
+
 ---
 ## Project Milestones
 
@@ -123,6 +127,7 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
 
 
 
