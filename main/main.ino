@@ -41,7 +41,7 @@ SensirionI2CSen5x sen5x;
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 //global variables
-char buffer[512];
+char buffer[1024];
 float queue_metrics[10];
 volatile bool device_connected = false;
 volatile bool old_device_connected = false;
@@ -86,6 +86,32 @@ static constexpr const char* METRIC[10] = {
     "Pressure (Pa): ",
     "Approx. altitude (m): ",
     "Methane: "
+};
+
+static constexpr const char* FAIR_MSGS[10] = {
+    "Fair: fine particles slightly elevated.",
+    "Fair: moderately elevated.",
+    "Fair: levels slightly elevated.",
+    "Fair: moderately elevated levels.",
+    "Fair: humidity slightly uncomfortable range.",
+    "",
+    "Fair: some VOCs present indoors.",
+    "Fair: pressure slightly outside normal.",
+    "Fair: altitude reading somewhat unusual.",
+    "Fair: some methane detected here."
+};
+
+static constexpr const char* POOR_MSGS[10] = {
+    "Poor: fine particles dangerously high.",
+    "Poor: pollution very high.",
+    "Poor: levels very high.",
+    "Poor: dust pollution high.",
+    "Poor: humidity very uncomfortable range.",
+    "",
+    "Poor: high VOCs ventilate now.",
+    "Poor: pressure well outside normal.",
+    "Poor: altitude reading very unusual.",
+    "Poor: high methane detected. Caution."
 };
 
 const esp_task_wdt_config_t wdt_cfg = {
@@ -151,6 +177,7 @@ void initSen54(){
     uint16_t error;
     char errorMessage[256];
     error = sen5x.deviceReset();
+
     if (error) {
         Serial.print("Error trying to execute deviceReset(): ");
         errorToString(error, errorMessage, 256);
@@ -169,14 +196,26 @@ void initSen54(){
         //Serial.println(" deg. Celsius (SEN54/SEN55 only");
     }
 
-    // Start Measurement
-    error = sen5x.startMeasurement();
+    error = sen5x.startMeasurement();// Start Measurement
     if (error) {
         Serial.print("Error trying to execute startMeasurement(): ");
         errorToString(error, errorMessage, 256);
         Serial.println(errorMessage);
     }
-    sen5x.startFanCleaning();
+
+    error = sen5x.setFanAutoCleaningInterval(43200);// fan cleaning interval
+    if (error) {
+        Serial.print("Error trying to execute setFanAutoCleaningInterval(): ");
+        errorToString(error, errorMessage, 256);
+        Serial.println(errorMessage);
+    }
+
+    error = sen5x.startFanCleaning();// fan cleaning 
+    if (error) {
+        Serial.print("Error trying to execute startFanCleaning(): ");
+        errorToString(error, errorMessage, 256);
+        Serial.println(errorMessage);
+    }
 }
 void initBLE(){
   BLEDevice::init("AQMod-Server");
@@ -254,10 +293,10 @@ void vMainDoAnalyis(void* parameters){
             continue;
         }
 
-        if (queue_metrics[i] >= RANGES[i].c)      quality = "Poor";
-        else if (queue_metrics[i] >= RANGES[i].b) quality = "Fair";
+        if (queue_metrics[i] >= RANGES[i].c)      quality = POOR_MSGS[i];
+        else if (queue_metrics[i] >= RANGES[i].b) quality = FAIR_MSGS[i];
         else if (queue_metrics[i] >= RANGES[i].a) quality = "Good";
-        else                          quality = "Fair/Poor";
+        else                          quality = FAIR_MSGS[i];
 
         int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
                          "%s%.2f - %s\n", METRIC[i], queue_metrics[i], quality);
