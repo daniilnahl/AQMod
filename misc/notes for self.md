@@ -39,3 +39,8 @@ Soldered bmp280 pins. First time soldering, it was pretty cool. Then started set
 #### 08/10
 - pm values are still not working. Tomorrow before beginning work on bluetooth try running the sen54 library command to get pm values as integers and implement fan cleaning each time setup() is ran. 
 - Otherwise, queue is working perfectly. freeRTOS part is officially complete, next fixing sen54 and only then setting up bluetooth.
+
+#### 09/05
+- Completed edge impulse tutorial. 
+- sent message to sensirion support about my sensor being defective.
+- I setup the project environment for aqmod on edge impulse. I can directly hook up data transfer from my mcu to edge imuplse using serial through "collect data" section in data acquisition.
