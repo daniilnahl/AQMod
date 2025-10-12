@@ -29,11 +29,11 @@
 - ~~fix that when I disconnect from ble on my phone I cant find the device anymore.~~
 
 4.5 **Required Fixes before TinyML**
-- Fix Sen54 sensor reporting junk data.
+- ~~Fix Sen54 sensor reporting junk data.~~
 
 5. **TinyML Anomaly Detection**
-- Run RTOS+BLE loop overnight → log “normal” CSV.
-- Upload CSV to Edge Impulse, train an anomaly detector, export Arduino library.
-- Trigger inference manually (button press) before scheduling per read.
-- Inject known gas spikes to measure false positives/negatives.
+- Create base classes: closed-room, open-room, lighter/gas, elavated dust.
+- Run loop to collect data for each class → log to separate CSV files.
+- Upload CSVs to Edge Impulse, train a classifier.
+- Integrate to model to aqmod -> inference every 2 seconds?
 

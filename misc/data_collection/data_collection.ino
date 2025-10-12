@@ -165,12 +165,10 @@ void loop() {
         pressure = bmp.readPressure();
         alt = bmp.readAltitude(1020); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
         methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
-        
-        snprintf(buffer, sizeof(buffer), "SEN 54\nmass concentration pm 1um: %0.01f \nmass concentration pm 2.5um: %0.01f \nmass concentration pm 4um: %0.01f \nmass concentration pm 10um: %0.01f \nambient humidity: %0.01f \nambient temperature: %0.01f \nvoc index: %0.01f \n\nBMP 280\nPressure = %0.01f Pa\nApprox altitude = %0.01f m\n\nMQ-9\nMethane = %0.01f\n\n",
-        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane);
+        //mass concentration pm 1um -> mass concentration pm 2.5um -> mass concentration pm 4um -> mass concentration pm 10um  -> ambient humidity -> ambient temperature -> voc index -> Methane
+        snprintf(buffer, sizeof(buffer), "%0.01f,%0.01f,%0.01f,%0.01f%0.01f,%0.01f,%0.01f,%0.01f\n",
+        mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, methane);
         Serial.println(buffer);
-
-        //float temp_data[10] = {mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane};
           delay(1000);
       }
 }

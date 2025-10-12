@@ -44,3 +44,8 @@ Soldered bmp280 pins. First time soldering, it was pretty cool. Then started set
 - Completed edge impulse tutorial. 
 - sent message to sensirion support about my sensor being defective.
 - I setup the project environment for aqmod on edge impulse. I can directly hook up data transfer from my mcu to edge imuplse using serial through "collect data" section in data acquisition.
+
+#### 10/04
+Cooked - didn't work on it in a while.
+- FIXED THE BIGGEST ERROR of the project: undersupplying sensors. I was having issues with mq9 and sen54 because I wasn't giving them 5v since the adapter I was using to power my power supply could only output 5v and I needed it to output at least 9v. 
+- Set up data collection environment. Instead of setting up direct data forwarder, I will do a work around with using .json files.
