@@ -49,3 +49,13 @@ Soldered bmp280 pins. First time soldering, it was pretty cool. Then started set
 Cooked - didn't work on it in a while.
 - FIXED THE BIGGEST ERROR of the project: undersupplying sensors. I was having issues with mq9 and sen54 because I wasn't giving them 5v since the adapter I was using to power my power supply could only output 5v and I needed it to output at least 9v. 
 - Set up data collection environment. Instead of setting up direct data forwarder, I will do a work around with using .json files.
+
+#### 10/12
+1. find out why program resets when python script ends, fix that 
+2. find out a way so string is split in a specific format and garbage like '\n' '\r\n' is excluded. 
+
+#### 10/18
+Fixed the string split. No clue why it restarts, but I dont think it will be an issue so I will leave it be.
+
+#### 10/19
+1. To get increased pm values: burn candles, vacuum, geekbars, soldering, sweeping, 

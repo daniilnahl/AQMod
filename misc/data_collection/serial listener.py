@@ -6,7 +6,7 @@ import os
 import re
 ser = serial.Serial(port='COM8',baudrate=115200)
 time.sleep(2)
-csv_file_path = 'closed_room.csv' #change for each class
+csv_file_path = 'meth.csv' #change for each class
 field_names = ['time','ms 1 um', 'ms 2.5 um','ms 4 um','ms 10 um','hum','temp','voc','methane']
 time_counter = 0
 def write_to_csv(data):
@@ -35,8 +35,8 @@ try:
         time.sleep(1)
         time_counter+=1
         
-        if time_counter == 60:
-            print("1 minute passed, continue data collection? y/n: ")
+        if time_counter == 300:
+            print("5 minute passed, continue data collection? y/n: ")
             user_input = input()
             if (user_input == 'n'):
                 print("User stopped data collection\nSerial port {ser.name} closed.")
