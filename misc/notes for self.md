@@ -59,3 +59,13 @@ Fixed the string split. No clue why it restarts, but I dont think it will be an 
 
 #### 10/19
 1. To get increased pm values: burn candles, vacuum, geekbars, soldering, sweeping, 
+
+#### 12/16 - 12/18
+##### Goals:
+- Integrate the model into data collection environment
+- Integrate the model into prototype environment
+- Clean up any code inconsistencies
+- Record videos of prototype working
+- Update documentation on github
+- schedule a linkedin post for Tuesday 10am
+
