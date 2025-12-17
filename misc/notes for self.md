@@ -62,7 +62,7 @@ Fixed the string split. No clue why it restarts, but I dont think it will be an 
 
 #### 12/16 - 12/18
 ##### Goals:
-- Integrate the model into data collection environment
+- ~Integrate the model into data collection environment~
 - Integrate the model into prototype environment
 - Clean up any code inconsistencies
 - Record videos of prototype working

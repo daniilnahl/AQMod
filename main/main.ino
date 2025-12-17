@@ -3,62 +3,32 @@
 #include <SensirionI2CSen5x.h>
 #include <Adafruit_BMP280.h>
 #include <MQUnifiedsensor.h>
-#include "esp_task_wdt.h" //watchdog :)))))))))))))
-#include "queue.h" //mister queue
+#include "esp_task_wdt.h" //watchdog 
+#include "queue.h" 
 #include <BLEDevice.h> 
 #include <BLEUtils.h>
 #include <BLEServer.h>
 
-//BLE init
+////Macros
+//ble macros
 #define SERVICE_UUID        "693aa0e4-7b2f-4350-bf38-e3d73f2b2a8f" //uniquely generated
 #define CHARACTERISTIC_UUID "6d11c04a-78fd-4ae7-8b6e-2a9527d4380e"
-
-BLEServer *pServer;
-BLEService *pService;
-BLECharacteristic *pCharacteristic;
-
-//MQ-9 parameters
+//MQ-9 macros
 #define         Board                   ("Arduino UNO")
 #define         Pin                     (6) 
 #define         Type                    ("MQ-9") 
 #define         Voltage_Resolution      (5)
 #define         ADC_Bit_Resolution      (12) 
 #define         RatioMQ9CleanAir        (9.6)
-
-//Sen 54 buffer reqs
-//Explanation: The used commands use up to 48 bytes. On some Arduino's the default buffer space is not large enough.
+//Sen 54 macros
 #define MAXBUF_REQUIREMENT 48
-
 #if (defined(I2C_BUFFER_LENGTH) &&                 \
      (I2C_BUFFER_LENGTH >= MAXBUF_REQUIREMENT)) || \
     (defined(BUFFER_LENGTH) && BUFFER_LENGTH >= MAXBUF_REQUIREMENT)
 #define USE_PRODUCT_INFO
 #endif
 
-//Sensor init
-Adafruit_BMP280 bmp; 
-SensirionI2CSen5x sen5x;
-MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
-//global variables
-char buffer[1024];
-float queue_metrics[10];
-volatile bool device_connected = false;
-volatile bool old_device_connected = false;
-
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) {
-    Serial.println("BLE device connected!");
-    device_connected = true;
-  };
-
-  void onDisconnect(BLEServer *pServer) {
-    delay(500);
-    pServer->startAdvertising();
-    Serial.println("BLE device disconnected!\nRestarting advertising...");
-    device_connected = false;
-  }
-};
 
 struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
 
@@ -113,20 +83,111 @@ static constexpr const char* POOR_MSGS[10] = {
     "Poor: altitude reading very unusual.",
     "Poor: high methane detected. Caution."
 };
-
+////global variables
+//task config
 const esp_task_wdt_config_t wdt_cfg = {
     .timeout_ms      = 10000,                      // 10 seconds
     .idle_core_mask  = 0,  
     .trigger_panic   = true,
 };
-//handlers
+//sensors
+Adafruit_BMP280 bmp; 
+SensirionI2CSen5x sen5x;
+MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
+//comm.
+char buffer[1024];
+float queue_metrics[10];
+//ble global variables
+BLEServer *pServer;
+BLEService *pService;
+BLECharacteristic *pCharacteristic;
+volatile bool device_connected = false;
+volatile bool old_device_connected = false;
+
+//tasks and inter comm. handlers
 TaskHandle_t task_sensors_handle = NULL;
 TaskHandle_t task_ble_conn_handle = NULL;
 TaskHandle_t task_analysis_handle = NULL;
-
 xQueueHandle data_queue = NULL;
 
-//setup functions
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer *pServer) {
+    Serial.println("BLE device connected!");
+    device_connected = true;
+  };
+
+  void onDisconnect(BLEServer *pServer) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("BLE device disconnected!\nRestarting advertising...");
+    device_connected = false;
+  }
+};
+//func. prototypes
+void initBmp280();
+void initMq9();
+void initSen54();
+void initBLE();
+void vMainGetDataSensors(void* parameters);
+void vMainDoAnalyis(void* parameters);
+
+void setup() { 
+  Serial.begin(115200);
+  Wire.begin();
+  
+  static bool sensors_inited = false;
+  static bool wdt_inited = false;
+  static bool ble_inited = false;
+
+  if (!ble_inited){
+    initBLE();
+    delay(500);
+    Serial.println("BLE initialized.");
+  }
+
+  if (!sensors_inited){
+    initSen54();
+    delay(63000);
+    Serial.println("SEN 54 warm up complete.");
+    initBmp280();
+    delay(1000);
+    Serial.println("BMP 280 warm up complete.");
+    initMq9();
+    delay(1000);
+    Serial.println("MQ 9 warm up complete.");
+    sensors_inited = true;
+  }
+
+  if (!wdt_inited){
+    ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
+    wdt_inited = true;
+  }
+
+  data_queue = xQueueCreate(3, 10 * sizeof(float));
+
+  //tasks - increase stack allocation if running free bytes script
+  xTaskCreate(vMainGetDataSensors,  //function name
+  "Get sensors data",               //task name
+  2600,                             //stack size
+  NULL,                             //task paramaters
+  1,                                //priority
+  &task_sensors_handle);            //task handle
+
+  xTaskCreate(vMainDoAnalyis, 
+  "Do data analysis",        
+  2200,                          
+  NULL,                          
+  2,                            
+  &task_analysis_handle);          
+
+  //subscribing tasks to watchdog
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
+}
+
+void loop() {
+}
+
 void initBmp280(){
   unsigned status;
   //status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
@@ -323,60 +384,3 @@ void vMainDoAnalyis(void* parameters){
     vTaskDelay(3000 / portTICK_PERIOD_MS); 
     }
   }
-
-void setup() { 
-  Serial.begin(115200);
-  Wire.begin();
-  
-  static bool sensors_inited = false;
-  static bool wdt_inited = false;
-  static bool ble_inited = false;
-
-  if (!ble_inited){
-    initBLE();
-    delay(500);
-    Serial.println("BLE initialized.");
-  }
-
-  if (!sensors_inited){
-    initSen54();
-    delay(63000);
-    Serial.println("SEN 54 warm up complete.");
-    initBmp280();
-    delay(1000);
-    Serial.println("BMP 280 warm up complete.");
-    initMq9();
-    delay(1000);
-    Serial.println("MQ 9 warm up complete.");
-    sensors_inited = true;
-  }
-
-  if (!wdt_inited){
-    ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
-    wdt_inited = true;
-  }
-
-  data_queue = xQueueCreate(3, 10 * sizeof(float));
-
-  //tasks - increase stack allocation if running free bytes script
-  xTaskCreate(vMainGetDataSensors,  //function name
-  "Get sensors data",               //task name
-  2600,                             //stack size
-  NULL,                             //task paramaters
-  1,                                //priority
-  &task_sensors_handle);            //task handle
-
-  xTaskCreate(vMainDoAnalyis, 
-  "Do data analysis",        
-  2200,                          
-  NULL,                          
-  2,                            
-  &task_analysis_handle);          
-
-  //subscribing tasks to watchdog
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
-}
-
-void loop() {
-}

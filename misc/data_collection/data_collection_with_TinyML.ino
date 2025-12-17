@@ -3,6 +3,7 @@
 #include <SensirionI2CSen5x.h>
 #include <Adafruit_BMP280.h>
 #include <MQUnifiedsensor.h>
+#include <AQMod_inferencing.h>
 
 //MQ-9 parameters
 #define         Board                   ("Arduino UNO")
@@ -29,6 +30,19 @@ MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 
 //global variables
 char buffer[512];
+
+
+//edge impulse stuff
+float features[6];
+
+int raw_feature_get_data(size_t offset, size_t length, float *out_ptr) {
+    memcpy(out_ptr, features + offset, length * sizeof(float));
+    return 0;
+}
+
+void print_inference_result(ei_impulse_result_t result);
+void inference();
+
 
 void initBmp280(){
   unsigned status;
@@ -117,6 +131,95 @@ void initSen54(){
     }
 }
 
+void inference(){
+    ei_printf("Edge Impulse standalone inferencing (Arduino)\n");
+
+    if (sizeof(features) / sizeof(float) != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
+        ei_printf("The size of your 'features' array is not correct. Expected %lu items, but had %lu\n",
+            EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, sizeof(features) / sizeof(float));
+        delay(1000);
+        return;
+    }
+
+    ei_impulse_result_t result = { 0 };
+
+    // the features are stored into flash, and we don't want to load everything into RAM
+    signal_t features_signal;
+    features_signal.total_length = sizeof(features) / sizeof(features[0]);
+    features_signal.get_data = &raw_feature_get_data;
+
+    // invoke the impulse
+    EI_IMPULSE_ERROR res = run_classifier(&features_signal, &result, false /* debug */);
+    if (res != EI_IMPULSE_OK) {
+        ei_printf("ERR: Failed to run classifier (%d)\n", res);
+        return;
+    }
+
+    // print inference return code
+    ei_printf("run_classifier returned: %d\r\n", res);
+    print_inference_result(result);
+
+}
+
+void print_inference_result(ei_impulse_result_t result) {
+
+    // Print how long it took to perform inference
+    ei_printf("Timing: DSP %d ms, inference %d ms, anomaly %d ms\r\n",
+            result.timing.dsp,
+            result.timing.classification,
+            result.timing.anomaly);
+
+    // Print the prediction results (object detection)
+#if EI_CLASSIFIER_OBJECT_DETECTION == 1
+    ei_printf("Object detection bounding boxes:\r\n");
+    for (uint32_t i = 0; i < result.bounding_boxes_count; i++) {
+        ei_impulse_result_bounding_box_t bb = result.bounding_boxes[i];
+        if (bb.value == 0) {
+            continue;
+        }
+        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
+                bb.label,
+                bb.value,
+                bb.x,
+                bb.y,
+                bb.width,
+                bb.height);
+    }
+
+    // Print the prediction results (classification)
+#else
+    ei_printf("Predictions:\r\n");
+    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
+        ei_printf("%.5f\r\n", result.classification[i].value);
+    }
+#endif
+
+    // Print anomaly result (if it exists)
+#if EI_CLASSIFIER_HAS_ANOMALY
+    ei_printf("Anomaly prediction: %.3f\r\n", result.anomaly);
+#endif
+
+#if EI_CLASSIFIER_HAS_VISUAL_ANOMALY
+    ei_printf("Visual anomalies:\r\n");
+    for (uint32_t i = 0; i < result.visual_ad_count; i++) {
+        ei_impulse_result_bounding_box_t bb = result.visual_ad_grid_cells[i];
+        if (bb.value == 0) {
+            continue;
+        }
+        ei_printf("  %s (%f) [ x: %u, y: %u, width: %u, height: %u ]\r\n",
+                bb.label,
+                bb.value,
+                bb.x,
+                bb.y,
+                bb.width,
+                bb.height);
+    }
+#endif
+
+}
+
+
 void setup() { 
   Serial.begin(115200);
   Wire.begin();
@@ -165,6 +268,14 @@ void loop() {
         snprintf(buffer, sizeof(buffer), "%0.01f,%0.01f,%0.01f,%0.01f,%0.01f,%0.01f,%0.01f,%0.01f\n",
         mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, methane);
         Serial.println(buffer);
+
+        features[0] = mass_con_pm1;
+        features[1] = mass_con_pm2p5;
+        features[2] = mass_con_pm4;
+        features[3] = mass_con_pm10;
+        features[4] = voc;
+        features[5] = methane;
+        inference();
         delay(1000);
       }
 }
