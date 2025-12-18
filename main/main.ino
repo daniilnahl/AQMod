@@ -318,7 +318,7 @@ int rawFeatureGetData(size_t offset, size_t length, float *out_ptr) {
 }
 
 void inference(char* buff, size_t* used){
-    ei_printf("Edge Impulse standalone inferencing (Arduino)\n");
+    //ei_printf("Edge Impulse standalone inferencing (Arduino)\n");
     if (6 != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
       ei_printf("ERROR: Your code provides 6 features, but the model expects %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
       vTaskDelay(1000 / portTICK_PERIOD_MS); 
@@ -419,8 +419,6 @@ void vMainDoAnalyis(void* parameters){
                          "%s%.2f - %s\n", METRIC[i], queue_metrics[i], quality);
         used += (n > 0) ? (size_t)n : 0;
       }
-      used += (n > 0) ? (size_t)n : 0;
-
       do_inference = (millis() - last_inference_time >= INFERENCE_INTERVAL);
 
       if (do_inference){
@@ -435,7 +433,7 @@ void vMainDoAnalyis(void* parameters){
           local_features[5] = queue_metrics[9];
 
           global_features_ptr = local_features;
-          inference(buffer,&used);
+          inference(buffer, &used);
       }   
 
       snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0, "\n\n");
