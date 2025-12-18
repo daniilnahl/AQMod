@@ -32,8 +32,8 @@
 - ~~Fix Sen54 sensor reporting junk data.~~
 
 5. **TinyML Anomaly Detection**
-- Create base classes: closed-room, open-room, lighter/gas, elavated dust.
-- Run loop to collect data for each class → log to separate CSV files.
-- Upload CSVs to Edge Impulse, train a classifier.
-- Integrate to model to aqmod -> inference every 2 seconds?
+- ~~Create base classes.~~
+- ~~Run loop to collect data for each class → log to separate CSV files.~~
+- ~~Upload CSVs to Edge Impulse, train a classifier.~~
+- ~~Integrate to model to aqmod -> inference every 2 seconds?~~
 
