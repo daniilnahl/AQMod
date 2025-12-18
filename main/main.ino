@@ -29,7 +29,7 @@
 #define USE_PRODUCT_INFO
 #endif
 //other macros
-#define INFERENCE_INTERVAL 30000
+#define INFERENCE_INTERVAL 15000
 
 
 struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
@@ -98,7 +98,7 @@ SensirionI2CSen5x sen5x;
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 //comm.
 char buffer[1024];
-float queue_metrics[10];
+
 //ble global variables
 BLEServer *pServer;
 BLEService *pService;
@@ -106,15 +106,17 @@ BLECharacteristic *pCharacteristic;
 volatile bool device_connected = false;
 volatile bool old_device_connected = false;
 
+//inference
+volatile bool do_inference = true;
+static float* global_features_ptr = nullptr; //make this a pointer instead to point to local array within
+static uint32_t last_inference_time = 0; //making it static inits the variable only once so with each task call the value is preserved from previous call.
+
 //tasks and inter comm. handlers
 TaskHandle_t task_sensors_handle = NULL;
-TaskHandle_t task_ble_conn_handle = NULL;
 TaskHandle_t task_analysis_handle = NULL;
-TaskHandle_t task_inference_handle = NULL;
 xQueueHandle data_queue = NULL;
 
 //inference variables
-static float features[6];
 
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
@@ -141,7 +143,6 @@ void printInferenceResult(ei_impulse_result_t result);
 
 void vMainGetDataSensors(void* parameters);
 void vMainDoAnalyis(void* parameters);
-void vMainInference(void* parameters);
 
 
 void setup() { 
@@ -188,21 +189,14 @@ void setup() {
 
   xTaskCreate(vMainDoAnalyis, 
   "Do data analysis",        
-  2200,                          
+  4096,                          
   NULL,                          
   2,                            
   &task_analysis_handle);          
-
-  xTaskCreate(vMainInference, 
-  "Do inference",        
-  2200,                          
-  NULL,                          
-  2,                            
-  &task_inference_handle);     
+  
   //subscribing tasks to watchdog
   ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
   ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_inference_handle));
 }
 
 void loop() {
@@ -318,15 +312,14 @@ void initBLE(){
 }
 
 int rawFeatureGetData(size_t offset, size_t length, float *out_ptr) {
-    memcpy(out_ptr, features + offset, length * sizeof(float));
+    memcpy(out_ptr, global_features_ptr + offset, length * sizeof(float));
     return 0;
 }
 
 void inference(){
     ei_printf("Edge Impulse standalone inferencing (Arduino)\n");
-    if (sizeof(features) / sizeof(float) != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
-        ei_printf("The size of your 'features' array is not correct. Expected %lu items, but had %lu\n",
-            EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, sizeof(features) / sizeof(float));
+    if (6 != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
+      ei_printf("ERROR: Your code provides 6 features, but the model expects %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
         delay(1000);
         return;
     }
@@ -334,7 +327,7 @@ void inference(){
     ei_impulse_result_t result = { 0 };
     // the features are stored into flash, and we don't want to load everything into RAM
     signal_t features_signal;
-    features_signal.total_length = sizeof(features) / sizeof(features[0]);
+    features_signal.total_length = 6;
     features_signal.get_data = &rawFeatureGetData;
 
     // invoke the impulse
@@ -400,16 +393,13 @@ void vMainGetDataSensors(void* parameters){
 }
 
 void vMainDoAnalyis(void* parameters){
+  float queue_metrics[10];
+  float local_features[6];
   for (;;){
     if (xQueueReceive(data_queue, queue_metrics, portMAX_DELAY) == pdTRUE){
     size_t used = 0;
     for (int i = 0; i < 10; i++){
         const char* quality = nullptr;
-
-        while ( i < 6){
-          features[i] = queue_metrics[i];
-        }
-
         if (!RANGES[i].has) { //metrics that dont have threshold aka only temp
             int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
                              "%s%.2f\n", METRIC[i], queue_metrics[i]);
@@ -426,11 +416,29 @@ void vMainDoAnalyis(void* parameters){
                          "%s%.2f - %s\n", METRIC[i], queue_metrics[i], quality);
         used += (n > 0) ? (size_t)n : 0;
       }
+
+      do_inference = (millis() - last_inference_time >= INFERENCE_INTERVAL);
+
+      if (do_inference){
+        do_inference = false;
+        last_inference_time = millis();
+
+        local_features[0] = queue_metrics[0];
+        local_features[1] = queue_metrics[1];
+        local_features[2] = queue_metrics[2];
+        local_features[3] = queue_metrics[3];
+        local_features[4] = queue_metrics[6];
+        local_features[5] = queue_metrics[9];
+
+        global_features_ptr = local_features;
+        inference();
+        }
+
+      //analysis finished and printed to serial
       snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0, "\n\n");
       Serial.println(buffer);
 
-      inference();
-
+      //send it over BLE
       if (device_connected){ //connected
         pCharacteristic->setValue((uint8_t*)buffer, strnlen(buffer, sizeof(buffer)));
       }
@@ -452,13 +460,3 @@ void vMainDoAnalyis(void* parameters){
     vTaskDelay(3000 / portTICK_PERIOD_MS); 
     }
   }
-
-
-void vMainInference(void* parameters){
-  for (;;){
-
-  }
-
-  ESP_ERROR_CHECK(esp_task_wdt_reset());
-  vTaskDelay(INFERENCE_INTERVAL / portTICK_PERIOD_MS); 
-}
