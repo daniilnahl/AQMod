@@ -29,8 +29,8 @@
 #define USE_PRODUCT_INFO
 #endif
 //other macros
-#define INFERENCE_INTERVAL 15000
-
+#define INFERENCE_INTERVAL 30000
+#define BUFFER_SIZE 2048
 
 struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
 
@@ -97,7 +97,7 @@ Adafruit_BMP280 bmp;
 SensirionI2CSen5x sen5x;
 MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
 //comm.
-char buffer[1024];
+char buffer[BUFFER_SIZE];
 
 //ble global variables
 BLEServer *pServer;
@@ -138,8 +138,8 @@ void initSen54();
 void initBLE();
 
 int rawFeatureGetData(size_t offset, size_t length, float *out_ptr);
-void inference();
-void printInferenceResult(ei_impulse_result_t result);
+void inference(char* buff, size_t* used);
+void printInferenceResult(ei_impulse_result_t result, char* buff, size_t* used);
 
 void vMainGetDataSensors(void* parameters);
 void vMainDoAnalyis(void* parameters);
@@ -299,7 +299,8 @@ void initBLE(){
   pService = pServer->createService(SERVICE_UUID);
   pCharacteristic = pService->createCharacteristic(
                                          CHARACTERISTIC_UUID,
-                                         BLECharacteristic::PROPERTY_READ);
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_NOTIFY);
 
   pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ); //enforces read only access
   pCharacteristic->setValue("Air quality data and analysis.");
@@ -316,12 +317,12 @@ int rawFeatureGetData(size_t offset, size_t length, float *out_ptr) {
     return 0;
 }
 
-void inference(){
+void inference(char* buff, size_t* used){
     ei_printf("Edge Impulse standalone inferencing (Arduino)\n");
     if (6 != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
       ei_printf("ERROR: Your code provides 6 features, but the model expects %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
-        delay(1000);
-        return;
+      vTaskDelay(1000 / portTICK_PERIOD_MS); 
+      return;
     }
 
     ei_impulse_result_t result = { 0 };
@@ -336,23 +337,23 @@ void inference(){
         ei_printf("ERR: Failed to run classifier (%d)\n", res);
         return;
     }
-
     // print inference return code
-    ei_printf("run_classifier returned: %d\r\n", res);
-    printInferenceResult(result);
+    printInferenceResult(result, buff, used);
 }
 
-void printInferenceResult(ei_impulse_result_t result) {
-    // Print how long it took to perform inference
-    ei_printf("Timing: DSP %d ms, inference %d ms, anomaly %d ms\r\n",
+void printInferenceResult(ei_impulse_result_t result, char* buff, size_t* used) {
+    int n = snprintf(buff + (*used), ((*used) < BUFFER_SIZE) ? BUFFER_SIZE - (*used) : 0,
+            "Timing: DSP %d ms, inference %d ms, anomaly %d ms\r\n",
             result.timing.dsp,
             result.timing.classification,
             result.timing.anomaly);
 
-    ei_printf("Predictions:\r\n");
+    *used += (n > 0) ? (size_t)n : 0;
+
     for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
-        ei_printf("  %s: ", ei_classifier_inferencing_categories[i]);
-        ei_printf("%.5f\r\n", result.classification[i].value);
+        n = snprintf(buff + (*used), ((*used) < BUFFER_SIZE) ? BUFFER_SIZE - (*used) : 0, "  %s: %.5f\r\n",
+            ei_classifier_inferencing_categories[i], result.classification[i].value);
+        *used += (n > 0) ? (size_t)n : 0;
     }
 }
 
@@ -398,10 +399,12 @@ void vMainDoAnalyis(void* parameters){
   for (;;){
     if (xQueueReceive(data_queue, queue_metrics, portMAX_DELAY) == pdTRUE){
     size_t used = 0;
+    int n = 0;
+
     for (int i = 0; i < 10; i++){
         const char* quality = nullptr;
         if (!RANGES[i].has) { //metrics that dont have threshold aka only temp
-            int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
+            n = snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0,
                              "%s%.2f\n", METRIC[i], queue_metrics[i]);
             used += (n > 0) ? (size_t)n : 0;
             continue;
@@ -412,35 +415,36 @@ void vMainDoAnalyis(void* parameters){
         else if (queue_metrics[i] >= RANGES[i].a) quality = "Good";
         else                          quality = FAIR_MSGS[i];
 
-        int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
+        n = snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0,
                          "%s%.2f - %s\n", METRIC[i], queue_metrics[i], quality);
         used += (n > 0) ? (size_t)n : 0;
       }
+      used += (n > 0) ? (size_t)n : 0;
 
       do_inference = (millis() - last_inference_time >= INFERENCE_INTERVAL);
 
       if (do_inference){
-        do_inference = false;
-        last_inference_time = millis();
+          do_inference = false;
+          last_inference_time = millis();
 
-        local_features[0] = queue_metrics[0];
-        local_features[1] = queue_metrics[1];
-        local_features[2] = queue_metrics[2];
-        local_features[3] = queue_metrics[3];
-        local_features[4] = queue_metrics[6];
-        local_features[5] = queue_metrics[9];
+          local_features[0] = queue_metrics[0];
+          local_features[1] = queue_metrics[1];
+          local_features[2] = queue_metrics[2];
+          local_features[3] = queue_metrics[3];
+          local_features[4] = queue_metrics[6];
+          local_features[5] = queue_metrics[9];
 
-        global_features_ptr = local_features;
-        inference();
-        }
+          global_features_ptr = local_features;
+          inference(buffer,&used);
+      }   
 
-      //analysis finished and printed to serial
-      snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0, "\n\n");
+      snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0, "\n\n");
       Serial.println(buffer);
 
       //send it over BLE
       if (device_connected){ //connected
         pCharacteristic->setValue((uint8_t*)buffer, strnlen(buffer, sizeof(buffer)));
+        pCharacteristic->notify();
       }
       
       if (!device_connected && old_device_connected){ //disconected
@@ -452,10 +456,10 @@ void vMainDoAnalyis(void* parameters){
       }
     }
       
-    //measures how many bytes are free from the stack size allocated
+    /**measures how many bytes are free from the stack size allocated
     UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
     Serial.printf("%u bytes\n\n\n", free_bytes);
-  
+    **/
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); 
     }
