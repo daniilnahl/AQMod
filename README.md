@@ -47,7 +47,7 @@
 1. ~~First working prototype~~ COMPLETED on 07/17/2025
 2. ~~RTOS Integration~~ COMPLETED on 08/10/2025
 3. ~~Bluetooth Connectivity~~ COMPLETED on 08/15/2025
-4. TinyML Anomaly Detection
+4. ~~TinyML Anomaly Detection~~ COMPLETED in Nov. of 2025
 
 ## Prerequisites
 
@@ -67,9 +67,9 @@
   - `Adafruit BMP280 Library`
   - `MQUnifiedsensor`
   - `Sensirion I2C SEN5X`
-- 
+  - `AQMod_inferencing`
 
-> **All these libraries can be downloaded through Arduino IDE library manager.**
+> **All these libraries can be downloaded through Arduino IDE library manager (besides AQMod_inferencing. You can add it following these instructions: Arduino IDE -> Sketch -> Include Library -> Add .ZIP Library...**
 
 ---
 
@@ -100,13 +100,28 @@
 ---
 
 ## Project Structure
-
-**WORK IN PROGRESS....**
----
-
-## Troubleshooting
-
-**WORK IN PROGRESS....**
+```
+AQMod
+├── Edge Impulse Model
+│   ├── model example code
+│   │   └── static_buffer
+│   │       └── static_buffer.ino
+│   └── ei-aqmod-arduino-1.0.2.zip
+├── main
+│   └── main.ino
+├── misc
+│   ├── AQMod schematic (KiCad)
+│   ├── data collection
+│   │   ├── data collected (csv files folder)
+│   │   ├── data_collection.ino
+│   │   ├── data_collection_with_TinyML.ino
+│   │   ├── sw_listener (env folder of below file)
+│   │   └── serial listener.py
+│   ├── images
+│   └── notes
+├── LICENSE
+└── README.md
+```
 ---
 
 ## Contributing
@@ -127,6 +142,8 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
+
 
 
 

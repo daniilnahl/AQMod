@@ -3,62 +3,34 @@
 #include <SensirionI2CSen5x.h>
 #include <Adafruit_BMP280.h>
 #include <MQUnifiedsensor.h>
-#include "esp_task_wdt.h" //watchdog :)))))))))))))
-#include "queue.h" //mister queue
+#include "esp_task_wdt.h" //watchdog 
+#include "queue.h" 
 #include <BLEDevice.h> 
 #include <BLEUtils.h>
 #include <BLEServer.h>
+#include <AQMod_inferencing.h>
 
-//BLE init
+////Macros
+//ble macros
 #define SERVICE_UUID        "693aa0e4-7b2f-4350-bf38-e3d73f2b2a8f" //uniquely generated
 #define CHARACTERISTIC_UUID "6d11c04a-78fd-4ae7-8b6e-2a9527d4380e"
-
-BLEServer *pServer;
-BLEService *pService;
-BLECharacteristic *pCharacteristic;
-
-//MQ-9 parameters
+//MQ-9 macros
 #define         Board                   ("Arduino UNO")
 #define         Pin                     (6) 
 #define         Type                    ("MQ-9") 
 #define         Voltage_Resolution      (5)
 #define         ADC_Bit_Resolution      (12) 
 #define         RatioMQ9CleanAir        (9.6)
-
-//Sen 54 buffer reqs
-//Explanation: The used commands use up to 48 bytes. On some Arduino's the default buffer space is not large enough.
+//Sen 54 macros
 #define MAXBUF_REQUIREMENT 48
-
 #if (defined(I2C_BUFFER_LENGTH) &&                 \
      (I2C_BUFFER_LENGTH >= MAXBUF_REQUIREMENT)) || \
     (defined(BUFFER_LENGTH) && BUFFER_LENGTH >= MAXBUF_REQUIREMENT)
 #define USE_PRODUCT_INFO
 #endif
-
-//Sensor init
-Adafruit_BMP280 bmp; 
-SensirionI2CSen5x sen5x;
-MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
-
-//global variables
-char buffer[1024];
-float queue_metrics[10];
-volatile bool device_connected = false;
-volatile bool old_device_connected = false;
-
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) {
-    Serial.println("BLE device connected!");
-    device_connected = true;
-  };
-
-  void onDisconnect(BLEServer *pServer) {
-    delay(500);
-    pServer->startAdvertising();
-    Serial.println("BLE device disconnected!\nRestarting advertising...");
-    device_connected = false;
-  }
-};
+//other macros
+#define INFERENCE_INTERVAL 30000
+#define BUFFER_SIZE 2048
 
 struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
 
@@ -113,20 +85,123 @@ static constexpr const char* POOR_MSGS[10] = {
     "Poor: altitude reading very unusual.",
     "Poor: high methane detected. Caution."
 };
-
+////global variables
+//task config
 const esp_task_wdt_config_t wdt_cfg = {
     .timeout_ms      = 10000,                      // 10 seconds
     .idle_core_mask  = 0,  
     .trigger_panic   = true,
 };
-//handlers
-TaskHandle_t task_sensors_handle = NULL;
-TaskHandle_t task_ble_conn_handle = NULL;
-TaskHandle_t task_analysis_handle = NULL;
+//sensors
+Adafruit_BMP280 bmp; 
+SensirionI2CSen5x sen5x;
+MQUnifiedsensor MQ9(Board, Voltage_Resolution, ADC_Bit_Resolution, Pin, Type);
+//comm.
+char buffer[BUFFER_SIZE];
 
+//ble global variables
+BLEServer *pServer;
+BLEService *pService;
+BLECharacteristic *pCharacteristic;
+volatile bool device_connected = false;
+volatile bool old_device_connected = false;
+
+//inference
+volatile bool do_inference = true;
+static float* global_features_ptr = nullptr; //make this a pointer instead to point to local array within
+static uint32_t last_inference_time = 0; //making it static inits the variable only once so with each task call the value is preserved from previous call.
+
+//tasks and inter comm. handlers
+TaskHandle_t task_sensors_handle = NULL;
+TaskHandle_t task_analysis_handle = NULL;
 xQueueHandle data_queue = NULL;
 
-//setup functions
+//inference variables
+
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer *pServer) {
+    Serial.println("BLE device connected!");
+    device_connected = true;
+  };
+
+  void onDisconnect(BLEServer *pServer) {
+    delay(500);
+    pServer->startAdvertising();
+    Serial.println("BLE device disconnected!\nRestarting advertising...");
+    device_connected = false;
+  }
+};
+//func. prototypes
+void initBmp280();
+void initMq9();
+void initSen54();
+void initBLE();
+
+int rawFeatureGetData(size_t offset, size_t length, float *out_ptr);
+void inference(char* buff, size_t* used);
+void printInferenceResult(ei_impulse_result_t result, char* buff, size_t* used);
+
+void vMainGetDataSensors(void* parameters);
+void vMainDoAnalyis(void* parameters);
+
+
+void setup() { 
+  Serial.begin(115200);
+  Wire.begin();
+  
+  static bool sensors_inited = false;
+  static bool wdt_inited = false;
+  static bool ble_inited = false;
+
+  if (!ble_inited){
+    initBLE();
+    delay(500);
+    Serial.println("BLE initialized.");
+  }
+
+  if (!sensors_inited){
+    initSen54();
+    delay(63000);
+    Serial.println("SEN 54 warm up complete.");
+    initBmp280();
+    delay(1000);
+    Serial.println("BMP 280 warm up complete.");
+    initMq9();
+    delay(1000);
+    Serial.println("MQ 9 warm up complete.");
+    sensors_inited = true;
+  }
+
+  if (!wdt_inited){
+    ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
+    wdt_inited = true;
+  }
+
+  data_queue = xQueueCreate(3, 10 * sizeof(float));
+
+  //tasks - increase stack allocation if running free bytes script
+  xTaskCreate(vMainGetDataSensors,  //function name
+  "Get sensors data",               //task name
+  2600,                             //stack size
+  NULL,                             //task paramaters
+  1,                                //priority
+  &task_sensors_handle);            //task handle
+
+  xTaskCreate(vMainDoAnalyis, 
+  "Do data analysis",        
+  4096,                          
+  NULL,                          
+  2,                            
+  &task_analysis_handle);          
+  
+  //subscribing tasks to watchdog
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
+  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
+}
+
+void loop() {
+}
+
 void initBmp280(){
   unsigned status;
   //status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
@@ -224,7 +299,8 @@ void initBLE(){
   pService = pServer->createService(SERVICE_UUID);
   pCharacteristic = pService->createCharacteristic(
                                          CHARACTERISTIC_UUID,
-                                         BLECharacteristic::PROPERTY_READ);
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_NOTIFY);
 
   pCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ); //enforces read only access
   pCharacteristic->setValue("Air quality data and analysis.");
@@ -234,6 +310,51 @@ void initBLE(){
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(true);
   pAdvertising->start();
+}
+
+int rawFeatureGetData(size_t offset, size_t length, float *out_ptr) {
+    memcpy(out_ptr, global_features_ptr + offset, length * sizeof(float));
+    return 0;
+}
+
+void inference(char* buff, size_t* used){
+    //ei_printf("Edge Impulse standalone inferencing (Arduino)\n");
+    if (6 != EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE) {
+      ei_printf("ERROR: Your code provides 6 features, but the model expects %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+      vTaskDelay(1000 / portTICK_PERIOD_MS); 
+      return;
+    }
+
+    ei_impulse_result_t result = { 0 };
+    // the features are stored into flash, and we don't want to load everything into RAM
+    signal_t features_signal;
+    features_signal.total_length = 6;
+    features_signal.get_data = &rawFeatureGetData;
+
+    // invoke the impulse
+    EI_IMPULSE_ERROR res = run_classifier(&features_signal, &result, false /* debug */);
+    if (res != EI_IMPULSE_OK) {
+        ei_printf("ERR: Failed to run classifier (%d)\n", res);
+        return;
+    }
+    // print inference return code
+    printInferenceResult(result, buff, used);
+}
+
+void printInferenceResult(ei_impulse_result_t result, char* buff, size_t* used) {
+    int n = snprintf(buff + (*used), ((*used) < BUFFER_SIZE) ? BUFFER_SIZE - (*used) : 0,
+            "Timing: DSP %d ms, inference %d ms, anomaly %d ms\r\n",
+            result.timing.dsp,
+            result.timing.classification,
+            result.timing.anomaly);
+
+    *used += (n > 0) ? (size_t)n : 0;
+
+    for (uint16_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
+        n = snprintf(buff + (*used), ((*used) < BUFFER_SIZE) ? BUFFER_SIZE - (*used) : 0, "  %s: %.5f\r\n",
+            ei_classifier_inferencing_categories[i], result.classification[i].value);
+        *used += (n > 0) ? (size_t)n : 0;
+    }
 }
 
 void vMainGetDataSensors(void* parameters){
@@ -263,31 +384,27 @@ void vMainGetDataSensors(void* parameters){
         alt = bmp.readAltitude(1020); //approx. bonney lake QNH -  current local sea-level pressure (in hPa) 
         methane = MQ9.readSensor(); // reads PPM concentration using the model, a and b values set previously or from the setup
         
-        
         float temp_data[10] = {mass_con_pm1, mass_con_pm2p5, mass_con_pm4, mass_con_pm10, hum, temp, voc, pressure, alt, methane};
         //send it to the queue
         xQueueSend(data_queue, temp_data, portMAX_DELAY);
     }
-  /***
-  measures how many bytes are free from the stack size allocated
-  UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
-  Serial.printf("%u bytes\n\n\n", free_bytes);
-  ***/ 
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); //expressed in ticks, but converted into seconds based on my esp32's clock speed
   }
 }
 
 void vMainDoAnalyis(void* parameters){
+  float queue_metrics[10];
+  float local_features[6];
   for (;;){
     if (xQueueReceive(data_queue, queue_metrics, portMAX_DELAY) == pdTRUE){
     size_t used = 0;
+    int n = 0;
 
     for (int i = 0; i < 10; i++){
         const char* quality = nullptr;
-
         if (!RANGES[i].has) { //metrics that dont have threshold aka only temp
-            int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
+            n = snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0,
                              "%s%.2f\n", METRIC[i], queue_metrics[i]);
             used += (n > 0) ? (size_t)n : 0;
             continue;
@@ -298,16 +415,34 @@ void vMainDoAnalyis(void* parameters){
         else if (queue_metrics[i] >= RANGES[i].a) quality = "Good";
         else                          quality = FAIR_MSGS[i];
 
-        int n = snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0,
+        n = snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0,
                          "%s%.2f - %s\n", METRIC[i], queue_metrics[i], quality);
         used += (n > 0) ? (size_t)n : 0;
       }
-      snprintf(buffer + used, (used < sizeof(buffer)) ? sizeof(buffer) - used : 0, "\n\n");
+      do_inference = (millis() - last_inference_time >= INFERENCE_INTERVAL);
 
+      if (do_inference){
+          do_inference = false;
+          last_inference_time = millis();
+
+          local_features[0] = queue_metrics[0];
+          local_features[1] = queue_metrics[1];
+          local_features[2] = queue_metrics[2];
+          local_features[3] = queue_metrics[3];
+          local_features[4] = queue_metrics[6];
+          local_features[5] = queue_metrics[9];
+
+          global_features_ptr = local_features;
+          inference(buffer, &used);
+      }   
+
+      snprintf(buffer + used, (used < BUFFER_SIZE) ? BUFFER_SIZE - used : 0, "\n\n");
       Serial.println(buffer);
 
+      //send it over BLE
       if (device_connected){ //connected
         pCharacteristic->setValue((uint8_t*)buffer, strnlen(buffer, sizeof(buffer)));
+        pCharacteristic->notify();
       }
       
       if (!device_connected && old_device_connected){ //disconected
@@ -318,65 +453,12 @@ void vMainDoAnalyis(void* parameters){
         old_device_connected = device_connected;
       }
     }
-
+      
+    /**measures how many bytes are free from the stack size allocated
+    UBaseType_t free_bytes = uxTaskGetStackHighWaterMark(NULL);
+    Serial.printf("%u bytes\n\n\n", free_bytes);
+    **/
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     vTaskDelay(3000 / portTICK_PERIOD_MS); 
     }
   }
-
-void setup() { 
-  Serial.begin(115200);
-  Wire.begin();
-  
-  static bool sensors_inited = false;
-  static bool wdt_inited = false;
-  static bool ble_inited = false;
-
-  if (!ble_inited){
-    initBLE();
-    delay(500);
-    Serial.println("BLE initialized.");
-  }
-
-  if (!sensors_inited){
-    initSen54();
-    delay(63000);
-    Serial.println("SEN 54 warm up complete.");
-    initBmp280();
-    delay(1000);
-    Serial.println("BMP 280 warm up complete.");
-    initMq9();
-    delay(1000);
-    Serial.println("MQ 9 warm up complete.");
-    sensors_inited = true;
-  }
-
-  if (!wdt_inited){
-    ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&wdt_cfg));
-    wdt_inited = true;
-  }
-
-  data_queue = xQueueCreate(3, 10 * sizeof(float));
-
-  //tasks - increase stack allocation if running free bytes script
-  xTaskCreate(vMainGetDataSensors,  //function name
-  "Get sensors data",               //task name
-  2600,                             //stack size
-  NULL,                             //task paramaters
-  1,                                //priority
-  &task_sensors_handle);            //task handle
-
-  xTaskCreate(vMainDoAnalyis, 
-  "Do data analysis",        
-  2200,                          
-  NULL,                          
-  2,                            
-  &task_analysis_handle);          
-
-  //subscribing tasks to watchdog
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_sensors_handle));
-  ESP_ERROR_CHECK( esp_task_wdt_add(task_analysis_handle));
-}
-
-void loop() {
-}
