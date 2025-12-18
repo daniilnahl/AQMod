@@ -100,13 +100,28 @@
 ---
 
 ## Project Structure
-
-**WORK IN PROGRESS....**
----
-
-## Troubleshooting
-
-**WORK IN PROGRESS....**
+```
+AQMod
+├── Edge Impulse Model
+│   ├── model example code
+│   │   └── static_buffer
+│   │       └── static_buffer.ino
+│   └── ei-aqmod-arduino-1.0.2.zip
+├── main
+│   └── main.ino
+├── misc
+│   ├── AQMod schematic (KiCad)
+│   ├── data collection
+│   │   ├── data collected (csv files folder)
+│   │   ├── data_collection.ino
+│   │   ├── data_collection_with_TinyML.ino
+│   │   ├── sw_listener (env folder of below file)
+│   │   └── serial listener.py
+│   ├── images
+│   └── notes
+├── LICENSE
+└── README.md
+```
 ---
 
 ## Contributing
@@ -127,6 +142,7 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
 
 
 
