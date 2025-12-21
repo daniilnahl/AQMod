@@ -74,7 +74,7 @@
 ---
 
 ## Hardware Setup
-![Schematic](misc/AQModSchematic.JPG)
+![Schematic](misc/images/AQMod_Schematic.png)
 
 ---
 
@@ -142,6 +142,7 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
 
 
 
