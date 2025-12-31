@@ -37,8 +37,8 @@ struct Range { float a, b, c; bool has; };// 3 thresholds, or 'has=false' if N/A
 static constexpr Range RANGES[10] = {
     { 0,  15,   25,   true },  // pm1
     { 0,  15,   25,   true },  // pm2.5
-    { 0,  45,   75,   true },  // pm4
-    { 0,  45,   75,   true },  // pm10
+    { 0,  30,   60,   true },  // pm4
+    { 0,  40,   75,   true },  // pm10
     {30,  50,   60,   true },  // humidity
     { 0,   0,    0,  false },  // temp: special-case (person-dependent)
     { 0, 300, 1000,   true },  // voc
@@ -324,7 +324,6 @@ void inference(char* buff, size_t* used){
       vTaskDelay(1000 / portTICK_PERIOD_MS); 
       return;
     }
-
     ei_impulse_result_t result = { 0 };
     // the features are stored into flash, and we don't want to load everything into RAM
     signal_t features_signal;
@@ -431,7 +430,8 @@ void vMainDoAnalyis(void* parameters){
           local_features[3] = queue_metrics[3];
           local_features[4] = queue_metrics[6];
           local_features[5] = queue_metrics[9];
-
+          Serial.printf("Running inference on these metrics...\nmass_con_pm1: %f\n,mass_con_pm2.5: %f\nmass_con_pm4: %f\nmass_con_pm10: %f\nvoc index: %f\nmethane: %f\n",
+          local_features[0],local_features[1],local_features[2],local_features[3],local_features[4],local_features[5]);
           global_features_ptr = local_features;
           inference(buffer, &used);
       }   
