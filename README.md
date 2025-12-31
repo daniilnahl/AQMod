@@ -47,7 +47,7 @@
 1. ~~First working prototype~~ COMPLETED on 07/17/2025
 2. ~~RTOS Integration~~ COMPLETED on 08/10/2025
 3. ~~Bluetooth Connectivity~~ COMPLETED on 08/15/2025
-4. ~~TinyML Anomaly Detection~~ COMPLETED in Nov. of 2025
+4. ~~TinyML Real Time Classification~~ COMPLETED in Nov. of 2025
 
 ## Prerequisites
 
@@ -74,7 +74,7 @@
 ---
 
 ## Hardware Setup
-![Schematic](misc/AQModSchematic.JPG)
+![Schematic](misc/images/AQMod_Schematic.png)
 
 ---
 
@@ -106,7 +106,7 @@ AQMod
 │   ├── model example code
 │   │   └── static_buffer
 │   │       └── static_buffer.ino
-│   └── ei-aqmod-arduino-1.0.2.zip
+│   └── ei-aqmod-arduino-1.0.2.zip (library and the model)
 ├── main
 │   └── main.ino
 ├── misc
@@ -142,6 +142,8 @@ This project is licensed under the MIT License – see the [LICENSE](LICENSE) fi
 ---
 
 *Developed by Daniil Nahliuk(@daniilnahl)*
+
+
 
 
 
